@@ -1,0 +1,388 @@
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}
+  launcher:
+    _target_: hydra._internal.core_plugins.basic_launcher.BasicLauncher
+  sweeper:
+    _target_: hydra._internal.core_plugins.basic_sweeper.BasicSweeper
+    max_batch_size: null
+    params: null
+  help:
+    app_name: ${hydra.job.name}
+    header: '${hydra.help.app_name} is powered by Hydra.
+
+      '
+    footer: 'Powered by Hydra (https://hydra.cc)
+
+      Use --hydra-help to view Hydra specific help
+
+      '
+    template: '${hydra.help.header}
+
+      == Configuration groups ==
+
+      Compose your configuration from those groups (group=option)
+
+
+      $APP_CONFIG_GROUPS
+
+
+      == Config ==
+
+      Override anything in the config (foo.bar=value)
+
+
+      $CONFIG
+
+
+      ${hydra.help.footer}
+
+      '
+  hydra_help:
+    template: 'Hydra (${hydra.runtime.version})
+
+      See https://hydra.cc for more info.
+
+
+      == Flags ==
+
+      $FLAGS_HELP
+
+
+      == Configuration groups ==
+
+      Compose your configuration from those groups (For example, append hydra/job_logging=disabled
+      to command line)
+
+
+      $HYDRA_CONFIG_GROUPS
+
+
+      Use ''--cfg hydra'' to Show the Hydra config.
+
+      '
+    hydra_help: ???
+  hydra_logging:
+    version: 1
+    formatters:
+      colorlog:
+        (): colorlog.ColoredFormatter
+        format: '[%(cyan)s%(asctime)s%(reset)s][%(purple)sHYDRA%(reset)s] %(message)s'
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: colorlog
+        stream: ext://sys.stdout
+    root:
+      level: INFO
+      handlers:
+      - console
+    disable_existing_loggers: false
+  job_logging:
+    version: 1
+    formatters:
+      simple:
+        format: '[%(asctime)s][%(name)s][%(levelname)s] - %(message)s'
+      colorlog:
+        (): colorlog.ColoredFormatter
+        format: '[%(cyan)s%(asctime)s%(reset)s][%(blue)s%(name)s%(reset)s][%(log_color)s%(levelname)s%(reset)s]
+          - %(message)s'
+        log_colors:
+          DEBUG: purple
+          INFO: green
+          WARNING: yellow
+          ERROR: red
+          CRITICAL: red
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: colorlog
+        stream: ext://sys.stdout
+      file:
+        class: logging.FileHandler
+        formatter: simple
+        filename: ${hydra.job.name}.log
+    root:
+      level: INFO
+      handlers:
+      - console
+      - file
+    disable_existing_loggers: false
+  env: {}
+  mode: MULTIRUN
+  searchpath: []
+  callbacks: {}
+  output_subdir: .hydra
+  overrides:
+    hydra:
+    - hydra.mode=MULTIRUN
+    task:
+    - experiment=dqn/cartpole
+  job:
+    name: train
+    chdir: null
+    override_dirname: experiment=dqn/cartpole
+    id: ???
+    num: ???
+    config_name: train
+    env_set: {}
+    env_copy: []
+    config:
+      override_dirname:
+        kv_sep: '='
+        item_sep: ','
+        exclude_keys: []
+  runtime:
+    version: 1.3.2
+    version_base: '1.3'
+    cwd: /workspaces/torchrl-hydra-template
+    config_sources:
+    - path: hydra.conf
+      schema: pkg
+      provider: hydra
+    - path: /workspaces/torchrl-hydra-template/configs
+      schema: file
+      provider: main
+    - path: hydra_plugins.hydra_colorlog.conf
+      schema: pkg
+      provider: hydra-colorlog
+    - path: ''
+      schema: structured
+      provider: schema
+    output_dir: ???
+    choices:
+      experiment: dqn/cartpole
+      logger: csv
+      environment: cartpole
+      transform@training_env.create_env_fn.transform: compose
+      env@training_env.create_env_fn.base_env: gym
+      env@training_env.create_env_fn: transformed_env
+      env@training_env: batched_env
+      transform@transform_reward_sum: reward_sum
+      transform@transform_step_counter: step_counter
+      algorithm: dqn
+      target_net_updater: hard
+      loss: dqn
+      optimizer: adam
+      trainer: dqn
+      sampler@replay_buffer.sampler: random
+      writer@replay_buffer.writer: round_robin
+      storage@replay_buffer.storage: lazy_tensor
+      replay_buffer: base
+      collector: sync
+      model@models.qvalue_model: qvalue
+      network@networks.qvalue_network: mlp
+      paths: default
+      hydra/env: default
+      hydra/callbacks: null
+      hydra/job_logging: colorlog
+      hydra/hydra_logging: colorlog
+      hydra/hydra_help: default
+      hydra/help: default
+      hydra/sweeper: basic
+      hydra/launcher: basic
+      hydra/output: default
+  verbose: false
+seed: 42
+checkpoint: null
+num_episodes: 10
+paths:
+  root_dir: ${hydra:runtime.cwd}
+  log_dir: ${paths.root_dir}/logs/
+  output_dir: ${hydra:runtime.output_dir}/
+networks:
+  qvalue_network:
+    _partial_: false
+    in_features: ${env.obs_dim}
+    out_features: ${env.action_dim}
+    depth: null
+    num_cells:
+    - 120
+    - 84
+    activation_class:
+      _target_: torch.nn.Tanh
+      _partial_: true
+    activation_kwargs: null
+    norm_class: null
+    norm_kwargs: null
+    dropout: null
+    bias_last_layer: true
+    single_bias_last_layer: false
+    layer_class:
+      _target_: torch.nn.Linear
+      _partial_: true
+    layer_kwargs: null
+    activate_last_layer: false
+    device: null
+    _target_: torchrl.modules.MLP
+models:
+  qvalue_model:
+    _partial_: false
+    in_keys:
+    - observation
+    out_keys:
+    - action_value
+    shared: false
+    _target_: torchrl.trainers.algorithms.configs.modules._make_qvalue_model
+    network: ${networks.qvalue_network}
+    action_space: one-hot
+collector:
+  create_env_fn: ${training_env}
+  policy: ${models.qvalue_model}
+  policy_factory: null
+  frames_per_batch: 1000
+  total_frames: 500000
+  init_random_frames: 10000
+  device: null
+  storing_device: null
+  policy_device: null
+  env_device: null
+  create_env_kwargs: null
+  max_frames_per_traj: null
+  reset_at_each_iter: false
+  postproc: null
+  split_trajs: false
+  exploration_type: RANDOM
+  return_same_td: false
+  interruptor: null
+  set_truncated: false
+  use_buffers: false
+  replay_buffer: null
+  extend_buffer: false
+  trust_policy: true
+  compile_policy: null
+  cudagraph_policy: null
+  no_cuda_sync: false
+  weight_updater: null
+  weight_sync_schemes: null
+  track_policy_version: false
+  _target_: torchrl.collectors.Collector
+  _partial_: true
+replay_buffer:
+  _partial_: false
+  _target_: torchrl.data.replay_buffers.ReplayBuffer
+  sampler:
+    _target_: torchrl.data.replay_buffers.RandomSampler
+  storage:
+    _partial_: false
+    _target_: torchrl.data.replay_buffers.LazyTensorStorage
+    max_size: 10000
+    device: cpu
+    ndim: 1
+    compilable: false
+    shared_init: false
+  writer:
+    _target_: torchrl.data.replay_buffers.RoundRobinWriter
+    compilable: false
+  transform: null
+  batch_size: 128
+  shared: false
+trainer:
+  collector: ${collector}
+  total_frames: ${collector.total_frames}
+  optim_steps_per_batch: 100
+  loss_module: ${loss}
+  optimizer: ${optimizer}
+  logger: ${logger}
+  save_trainer_file: null
+  replay_buffer: ${replay_buffer}
+  frame_skip: 1
+  clip_grad_norm: true
+  clip_norm: 10.0
+  progress_bar: true
+  seed: ${seed}
+  save_trainer_interval: 10000
+  log_interval: 10000
+  create_env_fn: null
+  value_network: ${models.qvalue_model}
+  target_net_updater: ${target_net_updater}
+  eps_init: 1.0
+  eps_end: 0.05
+  annealing_num_steps: 250000
+  async_collection: false
+  log_timings: false
+  _target_: torchrl.trainers.algorithms.configs.trainers._make_dqn_trainer
+optimizer:
+  lr: 0.00025
+  betas:
+  - 0.9
+  - 0.999
+  eps: 0.0001
+  weight_decay: 0.0
+  amsgrad: false
+  _target_: torch.optim.Adam
+  _partial_: true
+loss:
+  _partial_: false
+  value_network: ${models.qvalue_model}
+  loss_function: l2
+  delay_value: true
+  double_dqn: false
+  action_space: one-hot
+  gamma: null
+  reduction: null
+  _target_: torchrl.trainers.algorithms.configs.objectives._make_dqn_loss
+target_net_updater:
+  loss_module: ???
+  _partial_: true
+  _target_: torchrl.objectives.utils.HardUpdate
+  value_network_update_interval: 50
+transform_step_counter:
+  max_steps: 500
+  truncated_key: truncated
+  step_count_key: step_count
+  update_done: true
+  _target_: torchrl.envs.transforms.transforms.StepCounter
+transform_reward_sum:
+  in_keys:
+  - reward
+  out_keys:
+  - reward_sum
+  _target_: torchrl.envs.transforms.transforms.RewardSum
+training_env:
+  _partial_: false
+  create_env_fn:
+    _partial_: true
+    base_env:
+      _partial_: false
+      env_name: CartPole-v1
+      categorical_action_encoding: false
+      from_pixels: false
+      pixels_only: true
+      frame_skip: 1
+      device: cpu
+      batch_size: null
+      allow_done_after_reset: false
+      convert_actions_to_numpy: true
+      missing_obs_value: null
+      disable_env_checker: null
+      render_mode: null
+      num_envs: 0
+      backend: gymnasium
+      _target_: torchrl.trainers.algorithms.configs.envs_libs.make_gym_env
+    transform:
+      transforms:
+      - ${transform_step_counter}
+      - ${transform_reward_sum}
+      _target_: torchrl.envs.transforms.transforms.Compose
+    cache_specs: true
+    auto_unwrap: null
+    _target_: torchrl.envs.TransformedEnv
+  num_workers: 1
+  create_env_kwargs: {}
+  batched_env_type: parallel
+  device: null
+  _target_: torchrl.trainers.algorithms.configs.envs.make_batched_env
+env:
+  obs_dim: 4
+  action_dim: 2
+  action_space: one-hot
+logger:
+  exp_name: ${hydra:job.name}
+  log_dir: null
+  video_format: pt
+  video_fps: 30
+  _target_: torchrl.record.loggers.csv.CSVLogger

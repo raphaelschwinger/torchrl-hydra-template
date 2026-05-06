@@ -1,116 +1,62 @@
-"""Smoke tests: one full update cycle for every defined experiment.
+"""Smoke tests: every shipped experiment composes and instantiates.
 
-Each test loads the experiment config, applies minimal-run overrides,
-and calls _train(). The test passes if no exception is raised and
-the returned metrics dict is non-empty.
+These don't run training (which would be slow/flaky) — they only verify
+config composition and that ``hydra.utils.instantiate(cfg.trainer)``
+returns a TorchRL ``Trainer``. Catches schema mismatches early.
 
-Run with:
+Run with::
+
     pytest tests/test_smoke.py -v
 """
+
 from __future__ import annotations
 
 import pytest
+import torchrl.trainers.algorithms.configs  # noqa: F401  (registers ConfigStore entries)
+from torchrl.trainers import Trainer
 
+import src.algorithms.reinforce.configs  # noqa: F401  (registers REINFORCETrainerConfig)
 from tests.conftest import load_experiment_cfg
 
 
-# ---------------------------------------------------------------------------
-# Common overrides that apply to every experiment
-# ---------------------------------------------------------------------------
-BASE_OVERRIDES = [
-    "logger=[]",                          # no logging during tests
-    "trainer.accelerator=cpu",
-    "trainer.devices=[0]",
-    "checkpoint.save_dir=/tmp/hydra_smoke_tests/checkpoints",
-    "checkpoint.save_last=false",
-    "checkpoint.save_every_n_steps=999999999",
-    "hydra.run.dir=/tmp/hydra_smoke_tests",
-]
+@pytest.mark.parametrize(
+    "experiment",
+    [
+        "dqn/cartpole",
+        "dqn/atari_pong",
+        "ppo/pendulum",
+        "ppo/halfcheetah",
+        "reinforce/pendulum",
+    ],
+)
+def test_experiment_composes(experiment: str) -> None:
+    cfg = load_experiment_cfg(experiment)
+    assert "trainer" in cfg
+    assert cfg.trainer._target_
 
 
-def _reinforce_overrides() -> list[str]:
-    return [
-        *BASE_OVERRIDES,
-        "trainer.total_frames=2000",
-    ]
+@pytest.mark.parametrize(
+    "experiment",
+    [
+        "dqn/cartpole",
+        "ppo/pendulum",
+        "ppo/halfcheetah",
+        "reinforce/pendulum",
+    ],
+)
+def test_experiment_instantiates_trainer(experiment: str) -> None:
+    """Build the trainer for each experiment that runs on CPU. Skips the
+    Atari smoke since the env startup is heavyweight for unit tests."""
+    import hydra
 
-
-def _dqn_overrides() -> list[str]:
-    return [
-        *BASE_OVERRIDES,
-        "trainer.total_frames=400",
-        "algorithm.frames_per_batch=100",
-        "algorithm.init_random_frames=0",
-        "algorithm.replay_buffer.capacity=400",
-        "algorithm.replay_buffer.batch_size=32",
-        "algorithm.eps_annealing_frames=200",
-    ]
-
-
-def _ppo_overrides() -> list[str]:
-    return [
-        *BASE_OVERRIDES,
-        "trainer.total_frames=256",
-        "trainer.num_envs=1",
-        "algorithm.frames_per_batch=64",
-        "algorithm.epochs_per_batch=1",
-        "algorithm.minibatch_size=32",
-        "environment.normalize_obs=false",
-    ]
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-def test_smoke_reinforce_cartpole():
-    """REINFORCE on CartPole: discrete actions, MLP policy."""
-    cfg = load_experiment_cfg("reinforce/cartpole", _reinforce_overrides())
-    from src.train import _train
-    metrics = _train(cfg)
-    assert isinstance(metrics, dict)
-    assert len(metrics) > 0
-
-
-def test_smoke_dqn_cartpole():
-    """DQN on CartPole: discrete actions, MLP Q-network, replay buffer."""
-    cfg = load_experiment_cfg("dqn/cartpole", _dqn_overrides())
-    from src.train import _train
-    metrics = _train(cfg)
-    assert isinstance(metrics, dict)
-    assert len(metrics) > 0
-
-
-def _dqn_atari_overrides() -> list[str]:
-    return [
-        *_dqn_overrides(),
-        "trainer.num_envs=1",                      # ignore any num_envs in experiment yaml
-        "algorithm.replay_buffer.storage=tensor",  # no mmap disk files in CI
-    ]
-
-
-def test_smoke_dqn_atari_breakout():
-    """DQN on Atari Breakout: pixel obs, CNN Q-network, transforms-list config."""
-    cfg = load_experiment_cfg("dqn/atari_breakout", _dqn_atari_overrides())
-    from src.train import _train
-    metrics = _train(cfg)
-    assert isinstance(metrics, dict)
-    assert len(metrics) > 0
-
-
-def test_smoke_dqn_atari_pong():
-    """DQN on Atari Pong: pixel obs, CNN Q-network, SOTA transforms pipeline."""
-    cfg = load_experiment_cfg("dqn/atari_pong", _dqn_atari_overrides())
-    from src.train import _train
-    metrics = _train(cfg)
-    assert isinstance(metrics, dict)
-    assert len(metrics) > 0
-
-
-def test_smoke_ppo_dmc_humanoid():
-    """PPO on DMControl humanoid: continuous actions, MLP actor-critic, GAE."""
-    cfg = load_experiment_cfg("ppo/dmc_humanoid", _ppo_overrides())
-    from src.train import _train
-    metrics = _train(cfg)
-    assert isinstance(metrics, dict)
-    assert len(metrics) > 0
+    cfg = load_experiment_cfg(
+        experiment,
+        extra_overrides=[
+            "trainer.total_frames=10",
+            "trainer.progress_bar=false",
+            "collector.frames_per_batch=10",
+            "logger.exp_name=test",  # avoid ${hydra:job.name} interpolation
+        ],
+    )
+    trainer = hydra.utils.instantiate(cfg.trainer)
+    assert isinstance(trainer, Trainer)

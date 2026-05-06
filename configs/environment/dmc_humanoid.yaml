@@ -1,9 +1,0 @@
-name: humanoid
-backend: dm_control
-task: walk                  # dm_control task name
-
-# Observation / action metadata
-obs_shape: [67]             # flattened proprioception for humanoid-walk
-num_actions: 21             # continuous action dimension
-
-normalize_obs: true         # normalize observations to zero mean / unit variance

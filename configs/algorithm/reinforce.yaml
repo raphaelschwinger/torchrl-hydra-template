@@ -1,15 +1,70 @@
-_target_: src.algorithms.reinforce.ReinforceAlgorithm
-# Default values and parameter descriptions: src/algorithms/reinforce.py (ReinforceAlgorithm.__init__)
+# @package _global_
+# REINFORCE — on-policy policy gradient with a value baseline (torchrl's
+# ReinforceLoss requires a critic network).
+# Demonstrates the pattern for adding a new algorithm: a custom factory in
+# src/algorithms/reinforce/trainer.py and a config registered via
+# src/algorithms/reinforce/configs.py (Hydra ConfigStore).
 
-# Optimization
-lr: 1e-3
-gamma: 0.99
-max_grad_norm: 0.5
-normalize_returns: true
+defaults:
+  - /network@networks.policy_network: mlp
+  - /network@networks.value_network: mlp
+  - /model@models.policy_model: tanh_normal
+  - /model@models.value_model: value
+  - /collector@collector: sync
+  - /trainer@trainer: reinforce
+  - /optimizer@optimizer: adam
+  - /loss@loss: reinforce
 
-# Network architecture
-network:
-  architecture: mlp
-  hidden_sizes: [64, 64]
-  activation: tanh
-  layer_norm: false
+networks:
+  policy_network:
+    in_features: ${env.obs_dim}
+    out_features: ${env.policy_out_dim}
+    num_cells: [128, 128]
+  value_network:
+    in_features: ${env.obs_dim}
+    out_features: 1
+    num_cells: [128, 128]
+
+models:
+  policy_model:
+    return_log_prob: true
+    in_keys: [observation]
+    param_keys: [loc, scale]
+    out_keys: [action]
+    network: ${networks.policy_network}
+  value_model:
+    in_keys: [observation]
+    out_keys: [state_value]
+    network: ${networks.value_network}
+
+loss:
+  actor_network: ${models.policy_model}
+  critic_network: ${models.value_model}
+
+optimizer:
+  lr: 1e-3
+
+collector:
+  create_env_fn: ${training_env}
+  policy: ${models.policy_model}
+  total_frames: 200_000
+  frames_per_batch: 1000
+  _partial_: true
+
+trainer:
+  collector: ${collector}
+  optimizer: ${optimizer}
+  loss_module: ${loss}
+  actor_network: ${models.policy_model}
+  logger: ${logger}
+  total_frames: ${collector.total_frames}
+  gamma: 0.99
+  frame_skip: 1
+  clip_grad_norm: true
+  clip_norm: 1.0
+  progress_bar: true
+  seed: ${seed}
+  save_trainer_interval: 5_000
+  log_interval: 1_000
+  save_trainer_file: null
+  optim_steps_per_batch: 1

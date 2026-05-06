@@ -1,8 +1,8 @@
 # @package _global_
-# CartPole-v1. Exposes env.obs_dim / env.action_dim for algorithm configs to
-# interpolate network shapes.
+# HalfCheetah-v4 (MuJoCo). Continuous 6-D action; 17-D observation.
 
 defaults:
+  - /transform@transform_double_to_float: double_to_float
   - /transform@transform_step_counter: step_counter
   - /transform@transform_reward_sum: reward_sum
   - /env@training_env: batched_env
@@ -11,12 +11,12 @@ defaults:
   - /transform@training_env.create_env_fn.transform: compose
 
 env:
-  obs_dim: 4
-  action_dim: 2
-  action_space: one-hot
+  obs_dim: 17
+  action_dim: 6
+  policy_out_dim: 12  # 2 * action_dim for tanh_normal (loc, scale)
 
 transform_step_counter:
-  max_steps: 500
+  max_steps: 1000
   step_count_key: step_count
 
 transform_reward_sum:
@@ -27,9 +27,10 @@ training_env:
   num_workers: 1
   create_env_fn:
     base_env:
-      env_name: CartPole-v1
+      env_name: HalfCheetah-v4
     transform:
       transforms:
+        - ${transform_double_to_float}
         - ${transform_step_counter}
         - ${transform_reward_sum}
     _partial_: true

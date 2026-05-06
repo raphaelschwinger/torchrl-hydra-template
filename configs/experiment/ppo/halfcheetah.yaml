@@ -1,0 +1,33 @@
+# @package _global_
+# PPO on HalfCheetah-v4 (MuJoCo). Standard MuJoCo PPO benchmark.
+
+defaults:
+  - override /algorithm: ppo
+  - override /environment: halfcheetah
+  - _self_
+
+# Slightly larger nets for MuJoCo continuous control.
+networks:
+  policy_network:
+    num_cells: [256, 256]
+  value_network:
+    num_cells: [256, 256]
+
+collector:
+  total_frames: 1_000_000
+  frames_per_batch: 2048
+
+replay_buffer:
+  storage:
+    max_size: 2048
+  batch_size: 64
+
+optimizer:
+  lr: 3e-4
+
+trainer:
+  total_frames: ${collector.total_frames}
+  log_interval: 2048
+  save_trainer_interval: 20480
+  num_epochs: 10
+  clip_norm: 0.5

@@ -1,33 +1,18 @@
+# Top-level training config. Override an algorithm + environment, or pull in
+# a curated experiment recipe via `experiment=<algo>/<env>`.
+
 defaults:
   - _self_
   - paths: default
   - algorithm: ???
   - environment: ???
-  - logger: []
+  - logger: csv
   - experiment: null
   - override hydra/job_logging: colorlog
   - override hydra/hydra_logging: colorlog
 
-logger: []
+seed: 42
 
-trainer:
-  _target_: src.trainers.StepTrainer   # or src.trainers.EpisodeTrainer
-  accelerator: cpu        # "cpu" | "gpu" | "mps"
-  devices: [0]            # GPU indices; ignored when accelerator=cpu
-  seed: 42
-  total_frames: 1_000_000
-  num_envs: 1             # number of parallel environments
-  log_every_n_steps: 1_000
-
-checkpoint:
-  save_dir: ${paths.output_dir}/checkpoints
-  save_every_n_steps: 50_000
-  save_last: true
-  resume_from: null       # path to .pt file to resume from
-
-hydra:
-  run:
-    dir: ${paths.log_dir}/train/runs/${now:%Y-%m-%d_%H-%M-%S}
-  sweep:
-    dir: ${paths.log_dir}/train/multiruns/${now:%Y-%m-%d_%H-%M-%S}
-    subdir: ${hydra.job.num}
+# Eval-only overrides — set checkpoint to load a trained model with `python -m src.eval`.
+checkpoint: null
+num_episodes: 10

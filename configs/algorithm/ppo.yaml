@@ -1,25 +1,89 @@
-_target_: src.algorithms.ppo.PPOAlgorithm
-# Default values and parameter descriptions: src/algorithms/ppo.py (PPOAlgorithm.__init__)
+# @package _global_
+# PPO algorithm defaults.
+# Composes TorchRL's shipped configs (registered via
+# torchrl.trainers.algorithms.configs) into a runnable trainer. Env-specific
+# bits (env, transforms, network in/out dims) are wired by an experiment.
 
-# Data collection
-frames_per_batch: 2_048
+defaults:
+  - /network@networks.policy_network: mlp
+  - /network@networks.value_network: mlp
+  - /model@models.policy_model: tanh_normal
+  - /model@models.value_model: value
+  - /collector@collector: sync
+  - /replay_buffer@replay_buffer: base
+  - /storage@replay_buffer.storage: lazy_tensor
+  - /writer@replay_buffer.writer: round_robin
+  - /sampler@replay_buffer.sampler: without_replacement
+  - /trainer@trainer: ppo
+  - /optimizer@optimizer: adam
+  - /loss@loss: ppo
 
-# PPO-specific
-epochs_per_batch: 10
-minibatch_size: 64
-clip_epsilon: 0.2
-entropy_coef: 0.01
-critic_coef: 0.5
-gamma: 0.99
-lmbda: 0.95
-max_grad_norm: 0.5
+networks:
+  # Default shapes; experiments override out_features for the policy network
+  # to 2 * action_dim (loc, scale) for the tanh_normal model.
+  policy_network:
+    in_features: ${env.obs_dim}
+    out_features: ${env.policy_out_dim}
+    num_cells: [128, 128]
+  value_network:
+    in_features: ${env.obs_dim}
+    out_features: 1
+    num_cells: [128, 128]
 
-# Optimization
-lr: 3e-4
+models:
+  policy_model:
+    return_log_prob: true
+    in_keys: ["observation"]
+    param_keys: ["loc", "scale"]
+    out_keys: ["action"]
+    network: ${networks.policy_network}
+  value_model:
+    in_keys: ["observation"]
+    out_keys: ["state_value"]
+    network: ${networks.value_network}
 
-# Network architecture (shared backbone for actor and critic)
-network:
-  architecture: mlp
-  hidden_sizes: [256, 256]
-  activation: tanh
-  layer_norm: false
+loss:
+  actor_network: ${models.policy_model}
+  critic_network: ${models.value_model}
+  entropy_coeff: 0.01
+
+optimizer:
+  lr: 1e-3
+
+collector:
+  create_env_fn: ${training_env}
+  policy: ${models.policy_model}
+  total_frames: 1_000_000
+  frames_per_batch: 1024
+  _partial_: true
+
+replay_buffer:
+  storage:
+    max_size: 1024
+    device: cpu
+    ndim: 1
+  sampler:
+    drop_last: true
+    shuffle: true
+  writer:
+    compilable: false
+  batch_size: 128
+
+trainer:
+  collector: ${collector}
+  optimizer: ${optimizer}
+  replay_buffer: ${replay_buffer}
+  loss_module: ${loss}
+  logger: ${logger}
+  total_frames: ${collector.total_frames}
+  frame_skip: 1
+  clip_grad_norm: true
+  clip_norm: 100.0
+  progress_bar: true
+  seed: ${seed}
+  save_trainer_interval: 100
+  log_interval: 100
+  save_trainer_file: null
+  optim_steps_per_batch: null
+  num_epochs: 2
+  async_collection: false

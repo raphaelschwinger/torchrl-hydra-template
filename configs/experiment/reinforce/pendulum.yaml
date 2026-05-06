@@ -1,0 +1,9 @@
+# @package _global_
+# REINFORCE on Pendulum-v1.
+# Demonstrates the "custom algorithm" extension pattern — see
+# src/algorithms/reinforce/{trainer,configs}.py.
+
+defaults:
+  - override /algorithm: reinforce
+  - override /environment: pendulum
+  - _self_

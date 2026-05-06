@@ -1,0 +1,5 @@
+_target_: torchrl.record.loggers.csv.CSVLogger
+exp_name: ${hydra:job.name}
+log_dir: null
+video_format: pt
+video_fps: 30

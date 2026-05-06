@@ -2,168 +2,179 @@
 
 ## Project overview
 
-A modular reinforcement learning research template built on [TorchRL](https://github.com/pytorch/rl) and [Hydra](https://github.com/facebookresearch/hydra). Three composable components — **Environment**, **Algorithm**, **Trainer** — are wired together by `src/train.py`.
+A thin Hydra wrapper around TorchRL's built-in algorithm trainers. The whole training entry point is six lines:
+
+```python
+@hydra.main(config_path="../configs", config_name="train", version_base="1.3")
+def main(cfg):
+    if cfg.get("seed") is not None:
+        seed_everything(int(cfg.seed))
+    trainer = hydra.utils.instantiate(cfg.trainer)
+    trainer.train()
+```
+
+Everything else (collector, loss module, replay buffer, networks, optimizer, env transforms) is composed in YAML using the structured configs that TorchRL ships in `torchrl.trainers.algorithms.configs` — see [`sota-implementations/dqn_trainer`](https://github.com/pytorch/rl/tree/main/sota-implementations/dqn_trainer) and [`sota-implementations/ppo_trainer`](https://github.com/pytorch/rl/tree/main/sota-implementations/ppo_trainer) upstream for reference.
+
+The template's value is:
+1. A curated set of **experiment recipes** under `configs/experiment/<algo>/<env>.yaml` that compose algorithm + environment defaults.
+2. An **extension example** (REINFORCE) showing how to add an algorithm not shipped by TorchRL — see `src/algorithms/reinforce/`.
+3. A small **custom-network** example (`src/networks/atari.py`) wired into an experiment.
 
 ## Key conventions
 
-### Algorithm hyperparameter pattern
+### Composition strategy
 
-Hyperparameters live as **explicit keyword arguments on `__init__`**, not in a separate config dataclass. Every algorithm constructor follows this shape:
+- `configs/algorithm/<name>.yaml` defines the algorithm-side composition: which trainer, loss, replay buffer, optimizer, default networks. References `${env.*}` keys via OmegaConf interpolation.
+- `configs/environment/<name>.yaml` defines the env factory + transforms and exposes `env.obs_dim`, `env.action_dim`, and (for continuous-action algos) `env.policy_out_dim`.
+- `configs/experiment/<algo>/<env>.yaml` glues an algorithm + environment together with `# @package _global_` and `override` directives.
+- `configs/logger/{csv,wandb,tensorboard}.yaml` sets the logger; switch from CLI with `logger=wandb`.
 
-```python
-class MyAlgorithm(BaseAlgorithm):
-    """Short description.
+### Schema-typed configs
 
-    Args:
-        cfg: Full Hydra config (trainer, logger, environment sections).
-        device: Resolved torch.device; set by the Trainer.
-        lr: Learning rate for the Adam optimizer.
-        gamma: Discount factor.
-        network: Dict with keys ``architecture``, ``hidden_sizes``, ``activation``,
-            ``layer_norm``.
-    """
-
-    def __init__(
-        self,
-        cfg: DictConfig,
-        device: torch.device | None = None,
-        *,
-        lr: float = 3e-4,
-        gamma: float = 0.99,
-        network: dict | None = None,
-    ) -> None:
-        super().__init__(cfg, device)
-        self.lr = lr
-        self.gamma = gamma
-        self._network_cfg = network or {"architecture": "mlp", ...}
-```
-
-- All HPs are keyword-only (`*` separator after `device`).
-- Nested dict groups (`network`, `replay_buffer`) use `dict | None = None` with body-level defaults.
-- Every parameter has a type annotation, a sensible default, and a docstring line.
-- `setup()` uses `self.xxx` directly — **no `self.acfg`**.
-- Wrap nested dict configs before passing to `make_network`: `OmegaConf.create(self._network_cfg)`.
-
-### How algorithms are instantiated (`src/train.py`)
-
-```python
-AlgClass = get_class(cfg.algorithm._target_)
-alg_kwargs = {k: v for k, v in OmegaConf.to_container(cfg.algorithm, resolve=True).items()
-              if k != "_target_"}
-algorithm = AlgClass(cfg=cfg, device=None, **alg_kwargs)
-```
-
-YAML values override Python defaults; keys absent from the YAML fall back to constructor defaults.
-
-### Environment pattern
-
-`Environment.__init__` accepts env parameters explicitly:
-
-```python
-env_kwargs = {k: v for k, v in OmegaConf.to_container(cfg.environment, resolve=True).items()
-              if k != "_target_"}
-environment = Environment(**env_kwargs)
-```
-
-`make_env` in `src/environments/factory.py` builds TorchRL `TransformedEnv` instances. `Environment` stores params in `self._factory_kwargs` and calls `make_env(**self._factory_kwargs, num_envs=num_envs, device=device)`.
-
-#### Gymnasium transforms list
-
-For gymnasium envs, transforms are configured as an explicit list in the YAML. Each entry has a `_target_` key pointing to a `torchrl.envs.transforms` class; kwargs follow. They are instantiated fresh per `make_env()` call via `hydra.utils.instantiate` (important for stateful transforms like `CatFrames`).
+Every component config is a dataclass registered with Hydra's ConfigStore (TorchRL provides them via `from torchrl.trainers.algorithms.configs import *`). Pulling a component into your YAML attaches its schema:
 
 ```yaml
-# configs/environment/my_env.yaml
-from_pixels: true       # pass from_pixels=True to GymEnv for pixel obs
-transforms:
-  - _target_: torchrl.envs.transforms.ToTensorImage
-    in_keys: [pixels]
-    out_keys: [pixels]
-  - _target_: torchrl.envs.transforms.GrayScale
-    in_keys: [pixels]
-    out_keys: [pixels]
-  - _target_: torchrl.envs.transforms.Resize
-    h: 84
-    w: 84
-    in_keys: [pixels]
-    out_keys: [pixels]
-  - _target_: torchrl.envs.transforms.CatFrames
-    N: 4
-    dim: -3
-    in_keys: [pixels]
-    out_keys: [observation]   # DQNAlgorithm expects "observation" key
-  - _target_: torchrl.envs.transforms.StepCounter
+defaults:
+  - /trainer@trainer: dqn          # attaches DQNTrainerConfig
+  - /loss@loss: dqn                # attaches DQNLossConfig
+  - /network@networks.qvalue_network: mlp  # attaches MLPConfig
 ```
 
-Key rules:
-- `CatFrames` must map `in_keys: [pixels]` → `out_keys: [observation]` so `DQNAlgorithm` finds the expected `"observation"` key.
-- Always include `StepCounter` explicitly in the list — it is no longer auto-appended.
-- `VecNorm` requires `init_stats()` — skip it (no hook in this architecture).
-- dm_control and envpool use built-in transform pipelines; backend-specific kwargs (`normalize_obs`, `clip_rewards`) flow through `**kwargs`.
+Then top-level sections in the same YAML override field values:
 
-### YAML config files
-
-- `configs/algorithm/<algo>.yaml` — sets non-default HP values; `_target_` points to the class.
-- `configs/environment/<env>.yaml` — environment kwargs.
-- `configs/experiment/<algo>/<env>.yaml` — composed overrides with `@package _global_`.
-- Algorithm YAML comments reference `<AlgoClass>.__init__` as the canonical source of defaults/docs.
-
-### Network config
-
-`make_network(cfg, obs_shape, out_features)` in `src/networks/factory.py` accepts a `DictConfig` (not a plain dict). Always wrap the stored dict:
-
-```python
-net_cfg = OmegaConf.create(self._network_cfg)
-q_net = make_network(net_cfg, obs_shape, num_actions)
+```yaml
+trainer:
+  total_frames: 500_000
+  log_interval: 10_000
+optimizer:
+  lr: 2.5e-4
 ```
+
+To **drop** an attached schema (e.g. swap a default MLP for a custom CNN class), use `null` in defaults:
+
+```yaml
+defaults:
+  - override /network@networks.qvalue_network: null
+networks:
+  qvalue_network:
+    _target_: src.networks.atari.AtariCNN
+    out_features: ${env.action_dim}
+```
+
+### Per-environment shape exposure
+
+Every `configs/environment/<name>.yaml` MUST set:
+
+- `env.obs_dim` — flat observation size (or `null` if image-based)
+- `env.action_dim` — number of discrete actions, or continuous-action dim
+- `env.policy_out_dim` — for continuous algos using `tanh_normal`: `2 * action_dim` (loc, scale). Optional otherwise.
+
+Algorithm configs interpolate from these so that `python src/train.py algorithm=dqn environment=cartpole` works without an experiment file.
+
+### Top-level `train.yaml` is NOT `# @package _global_`
+
+Only group files (in `configs/algorithm/`, `configs/environment/`, `configs/experiment/`) need that directive. The top-level config sits at the root package by default.
+
+### Don't shadow TorchRL ConfigStore group names
+
+TorchRL registers groups like `/network`, `/loss`, `/trainer`, `/transform`. If you create `configs/network/<x>.yaml` in your search path, Hydra tries to merge our file's content with TorchRL's `/network` schema and recurses. Use the schema attachment pattern shown above (`defaults: - /network@networks.qvalue_network: mlp`) instead of creating a parallel `network/` group.
 
 ## File map
 
 ```
 src/
-  train.py                  — entry point; unpacks cfg.algorithm and cfg.environment as **kwargs
+  train.py                  — @hydra.main → instantiate cfg.trainer, train
+  eval.py                   — load checkpoint, run greedy rollouts
   algorithms/
-    base.py                 — BaseAlgorithm ABC; TrainingState and CollectorConfig dataclasses
-    dqn.py                  — DQNAlgorithm  (off-policy, StepTrainer)
-    ppo.py                  — PPOAlgorithm  (on-policy, StepTrainer)
-    reinforce.py            — ReinforceAlgorithm (on-policy, EpisodeTrainer)
-  environments/
-    environment.py          — Environment wrapper (holds factory kwargs, exposes make_env)
-    factory.py              — make_env: Gymnasium / dm_control / envpool + transforms
+    dqn/                    — empty (uses TorchRL DQNTrainer directly)
+    ppo/                    — empty (uses TorchRL PPOTrainer directly)
+    reinforce/
+      trainer.py            — make_reinforce_trainer factory
+      configs.py            — REINFORCETrainerConfig + ReinforceLossConfig
+                              (registered with Hydra ConfigStore on import)
   networks/
-    factory.py              — make_network: MLP, AtariCNN
-  trainers/
-    BaseTrainer.py          — BaseTrainer ABC, TrainerEvent, Callback protocol, fire_callbacks
-    EpisodeTrainer.py       — EpisodeTrainer (episodic rollouts via env.rollout)
-    StepTrainer.py          — StepTrainer (fixed-size batches via SyncDataCollector)
+    atari.py                — AtariCNN (Mnih 2015 architecture)
+  utils/
+    seeding.py              — seed_everything
+
 configs/
-  algorithm/                — per-algo HP overrides + _target_
-  environment/              — env kwargs (cartpole, atari_breakout, atari_pong, dmc_humanoid)
-  experiment/               — composed experiment configs (dqn/cartpole, dqn/atari-pong, …)
+  train.yaml                — entry config, defaults list
+  paths/default.yaml        — root_dir / log_dir / output_dir
+  algorithm/                — dqn.yaml, ppo.yaml, reinforce.yaml
+  environment/              — cartpole.yaml, atari_pong.yaml, pendulum.yaml, halfcheetah.yaml
+  logger/                   — csv.yaml, wandb.yaml, tensorboard.yaml
+  experiment/
+    dqn/                    — cartpole.yaml, atari_pong.yaml
+    ppo/                    — pendulum.yaml, halfcheetah.yaml
+    reinforce/              — pendulum.yaml
+
+tests/test_smoke.py         — composes every shipped experiment + builds Trainer
 ```
 
 ## Adding a new algorithm
 
-1. Create `src/algorithms/my_algo.py` following the explicit-kwargs pattern above.
-2. Implement `setup(env)`, `step(batch) -> dict`, `get_policy()`, `get_explore_policy()`, `_get_training_state()`, `_load_training_state()`.
-3. Add `get_collector_config()` if using `StepTrainer` (see `src/trainers/StepTrainer.py`).
-4. Create `configs/algorithm/my_algo.yaml` with `_target_` and any non-default values.
-5. Create `configs/experiment/my_algo/<env>.yaml` with defaults overrides.
+### Case A: TorchRL ships it (DQN / PPO / SAC / TD3 / DDPG / CQL / IQL)
+
+1. Create `configs/algorithm/<name>.yaml`. Copy `configs/algorithm/dqn.yaml` and adapt:
+   - `defaults`: pull `/trainer@trainer: <name>`, `/loss@loss: <name>`, the right network/model schemas, etc.
+   - Set hyperparameters in top-level sections (`optimizer.lr`, `trainer.total_frames`, etc.).
+2. Create `configs/experiment/<name>/<env>.yaml`:
+   ```yaml
+   # @package _global_
+   defaults:
+     - override /algorithm: <name>
+     - override /environment: <env>
+     - _self_
+   ```
+3. Add a parametrize entry in `tests/test_smoke.py`.
+
+### Case B: TorchRL does NOT ship it (custom)
+
+See `src/algorithms/reinforce/` as the canonical example:
+
+1. `src/algorithms/<name>/trainer.py` — `make_<name>_trainer(...)` factory. Build the loss, collector, optimizer; return a `torchrl.trainers.Trainer`.
+2. `src/algorithms/<name>/configs.py` — define `<NAME>TrainerConfig(TrainerConfig)` and any custom loss config; register with `cs.store(group="trainer", name="<name>", node=...)`.
+3. Add `from src.algorithms.<name>.configs import *  # noqa` to `src/train.py` so the registration runs at import time.
+4. Create `configs/algorithm/<name>.yaml` and `configs/experiment/<name>/<env>.yaml` as in Case A.
+
+## Adding a new environment
+
+1. Create `configs/environment/<name>.yaml` modeled on existing files. Set `env.obs_dim`, `env.action_dim`, `env.policy_out_dim` (the last only matters for continuous-action algorithms).
+2. Compose transforms via `defaults: - /transform@transform_<thing>: <kind>` and reference them in `training_env.create_env_fn.transform.transforms`.
+3. For Atari/ALE envs: `_register_atari_envs()` in `src/train.py` already handles registration.
+4. For envs with float64 observations (most MuJoCo): include the `double_to_float` transform.
 
 ## Maintenance
 
 **Always update `README.md` and `AGENTS.md`** when:
-- Changing a public API (class signature, method name, config structure)
-- Adding or removing an algorithm or environment backend
-- Changing a cross-cutting convention (e.g. how HPs are passed, how configs are unpacked)
+- Changing how configs compose (e.g. introducing a new top-level group)
+- Adding or removing an algorithm/environment/experiment
+- Changing the entry point or eval script
 
-`README.md` is the human-facing reference; `AGENTS.md` is the agent-facing reference. Both must stay in sync with the code.
+`README.md` is human-facing; `AGENTS.md` is agent-facing. Both must stay in sync with the code.
 
 ## Running experiments
 
 ```shell
-python src/train.py experiment=dqn/cartpole
-python src/train.py experiment=dqn/atari_pong trainer.accelerator=gpu trainer.devices=[0]
-python src/train.py experiment=ppo/dmc_humanoid trainer.accelerator=gpu trainer.devices=[0]
-python src/train.py experiment=dqn/cartpole algorithm.lr=1e-3
+# Curated experiment recipes
+python -m src.train experiment=dqn/cartpole
+python -m src.train experiment=dqn/atari_pong trainer.progress_bar=true
+python -m src.train experiment=ppo/pendulum
+python -m src.train experiment=ppo/halfcheetah
+python -m src.train experiment=reinforce/pendulum
+
+# Compose without an experiment file
+python -m src.train algorithm=dqn environment=cartpole logger=wandb
+
+# Override individual hyperparams
+python -m src.train experiment=dqn/cartpole optimizer.lr=1e-3 trainer.total_frames=200_000
+
+# Multi-run with hydra
+python -m src.train -m experiment=dqn/cartpole seed=0,1,2
+
+# Eval a checkpoint
+python -m src.eval experiment=dqn/cartpole checkpoint=outputs/<run>/trainer_<step>.pt num_episodes=10
+
+# Tests
 pytest tests/test_smoke.py -v
 ```

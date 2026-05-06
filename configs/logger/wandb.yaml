@@ -1,9 +1,4 @@
-# @package _global_
-logger:
-  - _target_: src.callbacks.logger.WandBLogger
-    project: torchrl-hydra-template
-    entity: null                # set via env var WANDB_ENTITY or CLI override
-    name: ${hydra:runtime.choices.algorithm}_${hydra:runtime.choices.environment}_${now:%Y-%m-%d_%H-%M-%S}
-    tags: []
-    mode: online                # "online" | "offline" | "disabled"
-    save_dir: ${paths.log_dir}/wandb/
+_target_: torchrl.record.loggers.wandb.WandbLogger
+exp_name: ${hydra:job.name}
+project: torchrl-hydra-template
+offline: false

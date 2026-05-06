@@ -6,53 +6,27 @@ See `AGENTS.md` for the full codebase guide. This file adds Claude-specific note
 
 **Always update `README.md` and `AGENTS.md`** when changing a public API, adding an algorithm, renaming a class, or changing a convention. README targets human readers; AGENTS.md targets AI agents.
 
+## Architecture in one paragraph
+
+This template is a thin Hydra wrapper around TorchRL's built-in trainers. `src/train.py` does `trainer = hydra.utils.instantiate(cfg.trainer); trainer.train()` — that's the whole entry point. Everything else (collector, loss, replay buffer, networks, optimizer, env transforms) is composed via Hydra's defaults list using the structured configs that TorchRL ships in `torchrl.trainers.algorithms.configs`. Adding a new algorithm that TorchRL ships natively (DQN/PPO/SAC/TD3/DDPG/CQL/IQL) is a YAML-only change. Adding a custom algorithm = write a factory + register a `TrainerConfig` dataclass with Hydra's `ConfigStore` (see `src/algorithms/reinforce/`).
+
 ## Key patterns (quick reference)
 
-### Algorithm HPs — explicit constructor kwargs, not dataclasses
+### Adding a TorchRL-shipped algorithm
 
-```python
-class MyAlgorithm(BaseAlgorithm):
-    def __init__(self, cfg, device=None, *, lr=3e-4, gamma=0.99, network=None):
-        super().__init__(cfg, device)
-        self.lr = lr
-        self.gamma = gamma
-        self._network_cfg = network or {"architecture": "mlp", ...}
-```
+Create `configs/algorithm/<name>.yaml` modeled on `configs/algorithm/dqn.yaml`. Pull the trainer/loss/network/optimizer schemas from ConfigStore via `defaults: - /trainer@trainer: <name>` etc. Wire env-specific dims via `${env.obs_dim}` / `${env.action_dim}` interpolation.
 
-- Use `*` to make all HPs keyword-only.
-- Nested dict groups (`network`, `replay_buffer`) default to `None`; apply body-level fallbacks.
-- Wrap before passing to `make_network`: `OmegaConf.create(self._network_cfg)`.
-- No `self.acfg`, no `_build_acfg`, no config dataclasses.
+### Adding a custom algorithm
 
-### Instantiation in `train.py`
+`src/algorithms/<name>/trainer.py` provides a `make_<name>_trainer(...)` factory that returns a configured `torchrl.trainers.Trainer`. `src/algorithms/<name>/configs.py` defines a `<NAME>TrainerConfig` dataclass and registers it: `cs.store(group="trainer", name="<name>", node=<NAME>TrainerConfig)`. Import the configs module from `src/train.py` so the registration runs. See `src/algorithms/reinforce/` for the canonical example.
 
-```python
-alg_kwargs = {k: v for k, v in OmegaConf.to_container(cfg.algorithm, resolve=True).items()
-              if k != "_target_"}
-algorithm = AlgClass(cfg=cfg, device=None, **alg_kwargs)
+### Adding a network architecture
 
-env_kwargs = {k: v for k, v in OmegaConf.to_container(cfg.environment, resolve=True).items()
-              if k != "_target_"}
-environment = Environment(**env_kwargs)
-```
-
-### YAML convention
-
-```yaml
-_target_: src.algorithms.my_algo.MyAlgorithm
-# Default values and parameter descriptions: src/algorithms/my_algo.py (MyAlgorithm.__init__)
-
-lr: 3e-4
-network:
-  architecture: mlp
-  hidden_sizes: [256, 256]
-  activation: tanh
-  layer_norm: false
-```
+Custom Python modules go under `src/networks/`. Reference them in YAML via `_target_: src.networks.<file>.<Class>`. To swap a default schema-typed network for a custom one in an experiment, drop the schema first: `defaults: - override /network@networks.qvalue_network: null` then redefine the entry. See `configs/experiment/dqn/atari_pong.yaml`.
 
 ## What not to do
 
-- Do not create `XxxConfig` dataclasses for algorithm HPs.
-- Do not use `self.acfg` or `_build_acfg`.
-- Do not pass `cfg.environment` directly to `Environment()` — unpack it as `**kwargs`.
-- Do not add `OmegaConf` imports to `base.py` — it has no config-merging logic anymore.
+- Do not write a custom `Algorithm` / `BaseTrainer` / `Callback` framework — TorchRL's `Trainer` is the orchestrator and its hook system replaces our old callback protocol.
+- Do not name a search-path config group identically to a ConfigStore group name registered by TorchRL (e.g. our group named `network` collides with `/network` from ConfigStore and causes Hydra to recurse). Pick a distinct name (the experiment-level Atari override uses `qvalue_network` keys directly inside the experiment file rather than a separate `network/` group).
+- Do not use `# @package _global_` on the top-level `configs/train.yaml` — only on group files (`configs/algorithm/*`, `configs/environment/*`, `configs/experiment/**`) that need to set keys at the root.
+- Do not put env-specific values in `configs/algorithm/*` — algorithms reference `${env.*}` interpolation and the env config exposes those keys (`env.obs_dim`, `env.action_dim`, and for continuous-action algos `env.policy_out_dim`).

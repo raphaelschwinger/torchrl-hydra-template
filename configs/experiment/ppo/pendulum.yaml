@@ -1,0 +1,8 @@
+# @package _global_
+# PPO on Pendulum-v1. Mirrors torchrl/sota-implementations/ppo_trainer
+# for sanity-checking continuous control with the canonical hyperparams.
+
+defaults:
+  - override /algorithm: ppo
+  - override /environment: pendulum
+  - _self_
