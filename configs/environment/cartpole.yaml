@@ -1,9 +1,4 @@
 name: CartPole-v1
-backend: gymnasium
-
-# Observation / action metadata (used by algorithms to size networks)
-obs_shape: [4]
-num_actions: 2
 
 transforms:
   - _target_: torchrl.envs.transforms.StepCounter

@@ -15,11 +15,6 @@ dependencies = [
     "hydra-colorlog>=1.2.0",
     # Environments
     "gymnasium[classic-control]>=0.29.0",
-    "gymnasium[atari]>=0.29.0",
-    "ale-py>=0.9.0",
-    "shimmy>=1.3.0",
-    "dm-control>=1.0.18",
-    "mujoco>=3.1.0",
     # Logging
     "wandb>=0.17.0",
     "tensorboard>=2.16.0",
@@ -28,9 +23,6 @@ dependencies = [
     # Testing
     "pytest>=8.0.0",
     "pytest-timeout>=2.3.0",
-    "torchvision>=0.26.0",
-    "envpool>=0.8.4",
-    "treevalue>=1.5.0",
 ]
 
 [build-system]

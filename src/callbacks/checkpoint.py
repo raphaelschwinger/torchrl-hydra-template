@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from src.trainer import BaseTrainer
+    from src.trainers import BaseTrainer
 
 
 class CheckpointCallback:

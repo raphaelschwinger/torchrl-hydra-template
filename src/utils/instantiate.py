@@ -6,7 +6,7 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig, ListConfig
 
 if TYPE_CHECKING:
-    from src.trainer import BaseTrainer
+    from src.trainers import BaseTrainer
 
 
 def build_loggers(logger_cfgs: ListConfig | list) -> list:

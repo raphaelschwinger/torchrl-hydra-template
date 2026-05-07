@@ -8,7 +8,7 @@ defaults:
   - override hydra/hydra_logging: colorlog
 
 trainer:
-  _target_: src.trainers.EpisodeTrainer  # any trainer works for eval
+  _target_: src.trainers.StepTrainer
   accelerator: cpu
   devices: [0]
   seed: 42

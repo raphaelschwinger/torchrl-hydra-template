@@ -43,7 +43,7 @@ def _train(cfg: DictConfig) -> dict[str, float]:
     AlgClass = get_class(cfg.algorithm._target_)
     alg_kwargs = {k: v for k, v in OmegaConf.to_container(cfg.algorithm, resolve=True).items()
                   if k != "_target_"}
-    algorithm = AlgClass(cfg=cfg, device=None, **alg_kwargs)  # Trainer sets device
+    algorithm = AlgClass(device=None, **alg_kwargs)  # Trainer sets device
 
     loggers = build_loggers(cfg.logger)
 

@@ -1,38 +1,24 @@
 _target_: src.algorithms.dqn.DQNAlgorithm
 # Default values and parameter descriptions: src/algorithms/dqn.py (DQNAlgorithm.__init__)
+# `replay_buffer` and `network` are Callable factories defined in dqn.py and are
+# not exposed here — to swap them, edit dqn.py or pass a different factory in code.
 
-# Data collection
-frames_per_batch: 200
-init_random_frames: 5_000
-
-# Replay buffer (Hydra instantiate: override _target_ to swap implementation)
-replay_buffer:
-  _target_: src.algorithms.dqn_replay_buffer.build_dqn_replay_buffer
-  capacity: 100_000
-  batch_size: 128
-  storage: tensor       # "tensor" (in-memory) or "mmap" (disk-backed)
-  storage_device: null  # device for storage; null → same as trainer device
-                        # Set "cpu" for Atari-scale buffers (1M × 108 KB = ~108 GB)
-  scratch_dir: null     # mmap only: directory for backing files; null → /tmp
-  prefetch: null        # optional async prefetch (requires batch_size); null = off
-  pin_memory: false
-
-# Optimization
-lr: 1e-4
+# Optimisation
+lr: 2.5e-4
 gamma: 0.99
+batch_size: 128
 max_grad_norm: 10.0
-updates_per_step: 1         # gradient updates per collector step
-target_update_every: 1_000  # ignored when tau > 0
-tau: 0.0                    # soft update coefficient; 0 = hard update
 
-# Exploration (epsilon-greedy)
+# Exploration (epsilon-greedy, linear anneal in frames)
 eps_start: 1.0
 eps_end: 0.05
-eps_annealing_frames: 100_000
+annealing_frames: 250_000
 
-# Network architecture (MLP for CartPole; override to cnn_atari for Atari)
-network:
-  architecture: mlp
-  hidden_sizes: [128, 128]
-  activation: relu
-  layer_norm: false
+# Data collection
+frames_per_batch: 1_000
+init_random_frames: 10_000
+max_frames_per_traj: -1
+
+# Learning schedule
+num_updates: 100         # gradient updates per collector batch
+hard_update_freq: 50     # target net <- online every N gradient steps

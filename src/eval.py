@@ -1,7 +1,7 @@
 """Evaluation entry point.
 
 Usage:
-    python src/eval.py experiment=reinforce/cartpole checkpoint.resume_from=logs/.../last.pt
+    python src/eval.py experiment=dqn/cartpole checkpoint.resume_from=logs/.../last.pt
 """
 from __future__ import annotations
 
@@ -18,25 +18,22 @@ def evaluate(cfg: DictConfig) -> None:
 
 
 def _evaluate(cfg: DictConfig) -> dict[str, float]:
-    """Separated from the Hydra decorator for testability.
-
-    Args:
-        cfg: fully composed Hydra eval config
-
-    Returns:
-        dict of evaluation metrics
-    """
     from hydra.utils import get_class
+    from omegaconf import OmegaConf
 
     from src.environments.environment import Environment
     from src.utils.seeding import seed_everything
 
     seed_everything(int(cfg.trainer.seed))
 
-    environment = Environment(cfg.environment)
+    env_kwargs = {k: v for k, v in OmegaConf.to_container(cfg.environment, resolve=True).items()
+                  if k != "_target_"}
+    environment = Environment(**env_kwargs)
 
     AlgClass = get_class(cfg.algorithm._target_)
-    algorithm = AlgClass(cfg=cfg, device=None)  # Trainer sets device
+    alg_kwargs = {k: v for k, v in OmegaConf.to_container(cfg.algorithm, resolve=True).items()
+                  if k != "_target_"}
+    algorithm = AlgClass(device=None, **alg_kwargs)
 
     TrainerClass = get_class(cfg.trainer._target_)
     trainer = TrainerClass(
