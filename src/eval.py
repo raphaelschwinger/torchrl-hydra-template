@@ -18,7 +18,7 @@ def evaluate(cfg: DictConfig) -> None:
 
 
 def _evaluate(cfg: DictConfig) -> dict[str, float]:
-    from hydra.utils import get_class
+    from hydra.utils import get_class, instantiate
     from omegaconf import OmegaConf
 
     from src.environments.environment import Environment
@@ -30,10 +30,7 @@ def _evaluate(cfg: DictConfig) -> dict[str, float]:
                   if k != "_target_"}
     environment = Environment(**env_kwargs)
 
-    AlgClass = get_class(cfg.algorithm._target_)
-    alg_kwargs = {k: v for k, v in OmegaConf.to_container(cfg.algorithm, resolve=True).items()
-                  if k != "_target_"}
-    algorithm = AlgClass(device=None, **alg_kwargs)
+    algorithm = instantiate(cfg.algorithm, device=None)
 
     TrainerClass = get_class(cfg.trainer._target_)
     trainer = TrainerClass(

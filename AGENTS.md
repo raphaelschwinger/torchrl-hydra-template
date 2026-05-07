@@ -27,6 +27,12 @@ Currently only **DQN on CartPole-v1** is implemented; other algorithms will foll
      not know about the algorithm.
 3. **One source of truth per concern.** HP defaults live in the algorithm's
    `__init__` (with type hints + docstrings). YAML mirrors them for overrides.
+4. **Callable factories via Hydra.** Design choices that are `Callable`s (replay
+   buffer, network) are configured in `configs/algorithm/*.yaml` with `_partial_`
+   and nested `_target_` nodes. **`src/train.py` and `src/eval.py` build the
+   algorithm with `hydra.utils.instantiate(cfg.algorithm, device=None)`** so those
+   nested configs become real callables. Plain `OmegaConf.to_container` + `**kwargs`
+   would pass dicts instead of partials.
 
 ## Algorithm constructor pattern
 
@@ -37,8 +43,11 @@ class DQNAlgorithm(BaseAlgorithm):
         device: torch.device | None = None,
         *,
         # Design choices: factories injected as Callables
-        replay_buffer: Callable[[], ReplayBuffer] = default_replay_buffer,
-        network: Callable[[tuple[int, ...], int], nn.Module] = default_network,
+        replay_buffer: Callable[[], ReplayBuffer] = lambda: TensorDictReplayBuffer(...),
+        # Partial torchrl MLP; setup() passes in_features, out_features (see below)
+        network: Callable[[int, int], nn.Module] = functools.partial(
+            MLP, num_cells=[120, 84], activation_class=nn.ReLU
+        ),
         # Scalar HPs
         lr: float = 2.5e-4,
         gamma: float = 0.99,
@@ -61,9 +70,24 @@ Rules:
 - `*` makes every HP keyword-only.
 - `BaseAlgorithm.__init__(device)` — **no `cfg` parameter**. Algorithms read env
   specs from `make_env()` inside `setup()`.
-- `replay_buffer` and `network` are `Callable` factories. Their bodies in the
-  algorithm file (`default_replay_buffer`, `default_network`) are the canonical
-  design choice. Tweak them in code, not YAML.
+- `replay_buffer` is a **no-arg** factory returning a `ReplayBuffer`.
+- `network` is a factory called as **`network(in_features, out_features)`** with
+  integer positional arguments: flattened observation dim (`prod(observation.shape)`)
+  and discrete action count. Match this in `setup()` and in any custom factory.
+  For TorchRL `MLP`, use **`functools.partial(MLP, ...)`** in Python and **`_partial_:
+  true` + `_target_: torchrl.modules.MLP`** in YAML; omit `in_features` /
+  `out_features` from the partial so `setup()` supplies them.
+- **Activation class in YAML:** `torchrl.modules.MLP` expects `activation_class`
+  to be a **type** (it instantiates internally). In Hydra YAML, **`_target_:
+  torch.nn.ReLU` nests an instantiation** and produces a module instance, which
+  breaks `MLP`. Use **`hydra.utils.get_class`** instead:
+
+  ```yaml
+  activation_class:
+    _target_: hydra.utils.get_class
+    path: torch.nn.ReLU
+  ```
+
 - Scalar HPs are plain kwargs and **do** appear in YAML.
 
 ## `step(batch)` shape
@@ -96,20 +120,28 @@ def step(self, batch: TensorDict) -> dict[str, float]:
 The trainer never touches the replay buffer, target network or epsilon — those are
 algorithm internals.
 
-## Instantiation in `src/train.py`
+## Instantiation in `src/train.py` / `src/eval.py`
 
 ```python
-AlgClass = get_class(cfg.algorithm._target_)
-alg_kwargs = {k: v for k, v in OmegaConf.to_container(cfg.algorithm, resolve=True).items()
-              if k != "_target_"}
-algorithm = AlgClass(device=None, **alg_kwargs)
+from hydra.utils import instantiate, get_class
+from omegaconf import OmegaConf
+
+algorithm = instantiate(cfg.algorithm, device=None)  # recursive; resolves _partial_ factories
 
 env_kwargs = {k: v for k, v in OmegaConf.to_container(cfg.environment, resolve=True).items()
               if k != "_target_"}
 environment = Environment(**env_kwargs)
+
+TrainerClass = get_class(cfg.trainer._target_)
+trainer = TrainerClass(cfg=cfg, algorithm=algorithm, environment=environment)
 ```
 
-YAML values override Python defaults; absent keys fall back to constructor defaults.
+The **environment** is still unpacked from a flat dict. The **algorithm** must use
+`instantiate` whenever its YAML contains nested `_target_` / `_partial_` nodes
+(e.g. `replay_buffer`, `network`).
+
+YAML values override Python defaults where present; absent keys fall back to
+constructor defaults.
 
 ## Environment
 
@@ -145,11 +177,11 @@ checkpoint orchestration.
 
 ```
 src/
-  train.py                  — entry point; unpacks cfg.algorithm and cfg.environment as **kwargs
-  eval.py                   — evaluation entry point
+  train.py                  — entry point; instantiate(cfg.algorithm); environment **kwargs
+  eval.py                   — evaluation entry point; same algorithm instantiation
   algorithms/
     base.py                 — BaseAlgorithm ABC; TrainingState and CollectorConfig dataclasses
-    dqn.py                  — DQNAlgorithm + default_replay_buffer + default_network
+    dqn.py                  — DQNAlgorithm; replay/network factories (defaults + setup contract)
     utils.py                — last_episode_return helper
   environments/
     environment.py          — Environment wrapper (holds factory kwargs, exposes make_env)
@@ -160,7 +192,7 @@ src/
   callbacks/                — ProgressCallback, CheckpointCallback, WandBLogger, TensorBoardLogger
   utils/                    — device resolution, seeding, callback builders
 configs/
-  algorithm/dqn.yaml        — DQN HP overrides + _target_
+  algorithm/dqn.yaml        — DQN _target_; scalar HPs; _partial_ replay_buffer + network
   environment/cartpole.yaml — env kwargs (name, transforms)
   experiment/dqn/cartpole.yaml — composed experiment config
   logger/{wandb,tensorboard}.yaml
@@ -172,14 +204,16 @@ tests/
 
 ## Adding a new algorithm
 
-1. Create `src/algorithms/my_algo.py` following the kwargs pattern above. Define
-   `default_*` factory functions for design choices (network, buffer) and scalar
-   defaults for HPs.
+1. Create `src/algorithms/my_algo.py` following the kwargs pattern above. Use
+   `Callable` factories for design choices (inline lambdas, `functools.partial`,
+   or small helpers). Document the **call signature** each factory must satisfy
+   (e.g. `network(in_features, out_features)`).
 2. Implement `setup(make_env)`, `step(batch) -> dict`, `get_policy()`,
    `get_explore_policy()`, `get_collector_config()`,
    `_get_training_state()`, `_load_training_state()`.
-3. Create `configs/algorithm/my_algo.yaml` with `_target_` and the scalar HPs you
-   want exposed for override.
+3. Create `configs/algorithm/my_algo.yaml` with `_target_`, scalar HPs, and any
+   `_partial_` / nested `_target_` blocks for factories. Use `instantiate`-
+   compatible patterns (see DQN: replay buffer + partial `MLP`).
 4. Create `configs/experiment/my_algo/<env>.yaml` composing your algo + env.
 5. **Update `README.md` and `AGENTS.md`.**
 6. Add a smoke test in `tests/test_smoke.py`.

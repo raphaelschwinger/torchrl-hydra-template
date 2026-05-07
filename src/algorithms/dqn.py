@@ -21,6 +21,7 @@ Defaults match the torchrl SOTA reference for CartPole-v1
 """
 from __future__ import annotations
 
+import functools
 import math
 from typing import Callable
 
@@ -36,23 +37,6 @@ from torchrl.objectives import DQNLoss, HardUpdate
 from src.algorithms.base import BaseAlgorithm, CollectorConfig, TrainingState
 
 
-def default_replay_buffer() -> ReplayBuffer:
-    """Default replay buffer: in-memory, 10k transitions (matches SOTA reference)."""
-    return TensorDictReplayBuffer(
-        storage=LazyTensorStorage(max_size=10_000, device="cpu"),
-    )
-
-
-def default_network(input_shape: tuple[int, ...], num_outputs: int) -> nn.Module:
-    """Default Q-network: MLP [120, 84] with ReLU (matches SOTA reference)."""
-    return MLP(
-        in_features=int(math.prod(input_shape)),
-        activation_class=nn.ReLU,
-        out_features=num_outputs,
-        num_cells=[120, 84],
-    )
-
-
 class DQNAlgorithm(BaseAlgorithm):
     """DQN with experience replay, target network and epsilon-greedy exploration.
 
@@ -65,8 +49,15 @@ class DQNAlgorithm(BaseAlgorithm):
         device: torch.device | None = None,
         *,
         # --- Design choices: factories injected as Callables ---------------
-        replay_buffer: Callable[[], ReplayBuffer] = default_replay_buffer,
-        network: Callable[[tuple[int, ...], int], nn.Module] = default_network,
+        replay_buffer: Callable[[], ReplayBuffer] = lambda: TensorDictReplayBuffer(
+            storage=LazyTensorStorage(max_size=10_000, device="cpu"),
+        ),
+        # Partial torchrl ``MLP``; ``setup`` fills ``in_features`` / ``out_features``.
+        network: Callable[[int, int], nn.Module] = functools.partial(
+            MLP,
+            num_cells=[120, 84],
+            activation_class=nn.ReLU,
+        ),
         # --- Optimisation --------------------------------------------------
         lr: float = 2.5e-4,
         gamma: float = 0.99,
@@ -113,7 +104,9 @@ class DQNAlgorithm(BaseAlgorithm):
         num_actions = int(action_spec.space.n)
 
         # 1. Q-network -> QValueActor (action_value head + greedy argmax).
-        q_net = self._make_network(obs_shape, num_actions).to(self.device)
+        q_net = self._make_network(
+            int(math.prod(obs_shape)), num_actions
+        ).to(self.device)
         self.q_actor = QValueActor(
             module=q_net,
             spec=action_spec,

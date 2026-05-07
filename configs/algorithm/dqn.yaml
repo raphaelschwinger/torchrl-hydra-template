@@ -1,7 +1,22 @@
 _target_: src.algorithms.dqn.DQNAlgorithm
-# Default values and parameter descriptions: src/algorithms/dqn.py (DQNAlgorithm.__init__)
-# `replay_buffer` and `network` are Callable factories defined in dqn.py and are
-# not exposed here — to swap them, edit dqn.py or pass a different factory in code.
+
+# Callable factories (override via nested configs; requires ``instantiate(cfg.algorithm)``).
+replay_buffer:
+  _partial_: true
+  _target_: torchrl.data.TensorDictReplayBuffer
+  storage:
+    _target_: torchrl.data.LazyTensorStorage
+    max_size: 10_000
+    device: cpu
+
+network:
+  _partial_: true
+  _target_: torchrl.modules.MLP
+  num_cells: [120, 84]
+  # `torch.nn.ReLU` via `_target_` would instantiate a module; MLP needs the class.
+  activation_class:
+    _target_: hydra.utils.get_class
+    path: torch.nn.ReLU
 
 # Optimisation
 lr: 2.5e-4
