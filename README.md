@@ -225,9 +225,10 @@ class MyAlgorithm(BaseAlgorithm):
             "activation": "tanh", "layer_norm": False,
         }
 
-    def setup(self, env):
+    def setup(self, make_env):
         from omegaconf import OmegaConf
         from src.networks.factory import make_network
+        env = make_env()  # call only if you need env specs
         obs_shape = tuple(self.cfg.environment.obs_shape)
         num_actions = int(self.cfg.environment.num_actions)
         net = make_network(OmegaConf.create(self._network_cfg), obs_shape, num_actions)
@@ -309,7 +310,7 @@ The framework handles model-based RL naturally. A Dreamer-style algorithm would:
 
 ```python
 class DreamerAlgorithm(BaseAlgorithm):
-    def setup(self, env):
+    def setup(self, make_env):
         # Build world model (encoder, RSSM, reward head, decoder)
         # Build actor-critic
         # Build replay buffer

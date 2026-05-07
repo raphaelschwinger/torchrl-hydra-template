@@ -14,181 +14,158 @@ Architecture:
 """
 from __future__ import annotations
 
+import math
+from typing import Callable
+
 import torch
 import torch.nn as nn
-from omegaconf import DictConfig, OmegaConf
 from tensordict import TensorDict
 from tensordict.nn import TensorDictModule, TensorDictSequential
 from torchrl.envs import EnvBase
 
 from src.algorithms.base import BaseAlgorithm, CollectorConfig, TrainingState
-from src.networks.factory import make_network
+
+from torchrl.data import Composite, LazyTensorStorage, ReplayBuffer, TensorDictReplayBuffer
+from torchrl.modules import EGreedyModule, MLP, QValueActor
+from torchrl.objectives import DQNLoss, HardUpdate, SoftUpdate
 
 
 class DQNAlgorithm(BaseAlgorithm):
-    """DQN with double-DQN target network and epsilon-greedy exploration.
-
+    """Deep Q-learning with Experience Replay by Mnih et al. (2015).
+    https://www.nature.com/articles/nature14236
+    
     Defaults are tuned for CartPole-v1 (MLP network).
-    For Atari pixel environments override ``network`` to ``cnn_atari`` and increase
-    ``replay_buffer["capacity"]``, ``init_random_frames``, and ``eps_annealing_frames``.
-
-    Args:
-        cfg: Full Hydra config (trainer, logger, environment sections).
-        device: Resolved torch.device; set by the Trainer.
-        frames_per_batch: Frames added to replay buffer per collector step.
-        init_random_frames: Warm-up frames collected before training starts.
-        lr: Adam optimizer learning rate.
-        gamma: Discount factor for future rewards.
-        max_grad_norm: Gradient clipping threshold (L2 norm).
-        updates_per_step: Gradient updates per collector step.
-        target_update_every: Hard target-update interval in env frames (ignored when tau > 0).
-        tau: Soft update coefficient; 0 = hard update using target_update_every.
-        compile: torch.compile the loss module.
-        eps_start: Initial epsilon for epsilon-greedy exploration.
-        eps_end: Final epsilon after annealing.
-        eps_annealing_frames: Frames over which epsilon is linearly annealed.
-        replay_buffer: Dict with keys ``capacity``, ``batch_size``, ``prefetch``,
-            ``storage`` (``"tensor"`` or ``"mmap"``), ``storage_device``
-            (device for tensor storage; ``None`` → trainer device; use ``"cpu"``
-            for Atari-scale buffers that exceed GPU VRAM), and ``scratch_dir``
-            (directory for mmap backing files; ``None`` → ``/tmp``).
-        network: Dict with keys ``architecture``, ``hidden_sizes``, ``activation``,
-            ``layer_norm``. Use ``"mlp"`` for CartPole, ``"cnn_atari"`` for Atari.
-    """
+   """
 
     def __init__(
         self,
-        cfg: DictConfig,
         device: torch.device | None = None,
         *,
-        frames_per_batch: int = 200,
-        init_random_frames: int = 5_000,
-        lr: float = 1e-4,  # Adam optimizer learning rate
-        gamma: float = 0.99,
-        max_grad_norm: float = 10.0,  # gradient clipping threshold
-        updates_per_step: int = 1,
-        target_update_every: int = 1_000,
-        tau: float = 0.0,
-        compile: bool = False,
+        replay_buffer: Callable[[], ReplayBuffer] = lambda: TensorDictReplayBuffer(
+            storage=LazyTensorStorage(max_size=10_000,device='cpu'),
+            batch_size=128,
+        ),
+        network: Callable[[tuple[int, ...], int], nn.Module] = lambda input_shape, num_outputs: MLP(
+            in_features=input_shape,
+            activation_class=torch.nn.ReLU,
+            out_features=num_outputs,
+            num_cells=[120, 84],
+     
+        ),
+        annealing_frames: int = 50_000,
         eps_start: float = 1.0,
         eps_end: float = 0.05,
-        eps_annealing_frames: int = 100_000,
-        replay_buffer: dict | None = None,
-        network: dict | None = None,
+        gamma: float = 0.99,
+        hard_update_freq: int = 1000,
+        lr: float = 1e-4,
+        frames_per_batch: int = 200,
+        init_random_frames: int = 5_000,
+        max_frames_per_traj: int = -1,
+        num_updates: int = 1,
+        batch_size: int = 128,
+
     ) -> None:
-        super().__init__(cfg, device)
-        self.frames_per_batch = frames_per_batch
-        self.init_random_frames = init_random_frames
-        self.lr: float = lr  #: Learning rate for the Adam optimizer on the DQN loss.
-        self.gamma = gamma
-        self.max_grad_norm = max_grad_norm
-        self.updates_per_step = updates_per_step
-        self.target_update_every = target_update_every
-        self.tau = tau
-        self.compile = compile
+        super().__init__(device)
+        self.replay_buffer = replay_buffer
+        self.network = network
+        self.annealing_frames = annealing_frames
         self.eps_start = eps_start
         self.eps_end = eps_end
-        self.eps_annealing_frames = eps_annealing_frames
-        self._replay_buffer_cfg = replay_buffer or {
-            "capacity": 10_000, "batch_size": 128, "prefetch": 0, "storage": "tensor",
-        }
-        self._network_cfg = network or {
-            "architecture": "mlp", "hidden_sizes": [128, 128],
-            "activation": "relu", "layer_norm": False,
-        }
+        self.gamma = gamma
+        self.hard_update_freq = hard_update_freq
+        self.lr = lr
+        self.frames_per_batch = frames_per_batch
+        self.init_random_frames = init_random_frames
+        self.max_frames_per_traj = max_frames_per_traj
+        self.num_updates = num_updates
+        self.batch_size = batch_size
 
-    def setup(self, env: EnvBase) -> None:
-        from torchrl.data import LazyMemmapStorage, LazyTensorStorage, TensorDictReplayBuffer
-        from torchrl.data.replay_buffers.samplers import RandomSampler
-        from torchrl.modules import EGreedyModule, QValueActor
-        from torchrl.objectives import DQNLoss, HardUpdate, SoftUpdate
 
-        ecfg = self.cfg.environment
-        obs_shape = tuple(ecfg.obs_shape)
-        num_actions = int(ecfg.num_actions)
+    def setup(self, make_env: Callable[[], EnvBase]) -> None:
+        # Initialize replay buffer
+        self.replay_buffer = self.replay_buffer()
 
-        # --- Q-network ---
-        net_cfg = OmegaConf.create(self._network_cfg)
-        q_net = make_network(net_cfg, obs_shape, num_actions).to(self.device)
+        # Initialite action-value function Q with random weights
 
-        obs_key = "observation"
-        q_module = TensorDictModule(
-            q_net,
-            in_keys=[obs_key],
+        proof_environment = make_env()
+        # Define input shape
+        input_shape = proof_environment.observation_spec["observation"].shape[-1]
+        env_specs = proof_environment.specs
+        num_outputs = env_specs["input_spec", "full_action_spec", "action"].space.n
+        action_spec = env_specs["input_spec", "full_action_spec", "action"]
+
+        network = network(in_features=int(math.prod(input_shape)), out_features=num_outputs, device=self.device)
+
+        self.q_actor = QValueActor(
+            module=network,
+            spec=Composite(action=action_spec).to(self.device),
+            in_keys=["observation"],
             out_keys=["action_value"],
         )
-        self.q_actor = QValueActor(
-            module=q_module,
-            in_keys=[obs_key],
-            spec=env.action_spec,
-        ).to(self.device)
 
-        # Epsilon-greedy exploration wrapper
-        self.eps_module = EGreedyModule(
-            spec=env.action_spec,
-            annealing_num_steps=self.eps_annealing_frames,
+        greedy_module = EGreedyModule(
+            annealing_num_steps=self.annealing_frames,
             eps_init=self.eps_start,
             eps_end=self.eps_end,
-            action_key="action",
-        )
+            spec=self.q_actor.spec,
+            device=self.device,
+            )
+
         self._explore_policy = TensorDictSequential(
             self.q_actor,
-            self.eps_module,
-        ).to(self.device)
+            greedy_module,
+        )
 
-        # --- Loss (DQN with target network) ---
-        self.loss_module = DQNLoss(
+        # create the loss module
+        loss_module = DQNLoss(
             value_network=self.q_actor,
             loss_function="l2",
             delay_value=True,
-        ).to(self.device)
-        self.loss_module.make_value_estimator(gamma=self.gamma)
-
-        # Target network update (soft or hard)
-        if self.tau > 0:
-            self.target_updater = SoftUpdate(self.loss_module, tau=self.tau)
-        else:
-            self.target_updater = HardUpdate(
-                self.loss_module,
-                value_network_update_interval=self.target_update_every,
-            )
-
-        # --- Replay buffer ---
-        buf = self._replay_buffer_cfg
-        storage_type = buf.get("storage", "tensor")
-        prefetch = int(buf.get("prefetch", 0))
-        if storage_type == "mmap":
-            # scratch_dir controls where the memory-mapped files are written.
-            # Defaults to tempfile.gettempdir() (/tmp) when None.
-            # For large Atari buffers (1M frames ≈ 108 GB) set scratch_dir to a
-            # path with enough free space: replay_buffer.scratch_dir: /data/replay
-            scratch_dir = buf.get("scratch_dir", None) or None
-            storage = LazyMemmapStorage(int(buf["capacity"]), scratch_dir=scratch_dir)
-        else:
-            # storage_device controls where tensor data lives.
-            # Defaults to self.device (GPU) which is fine for small buffers.
-            # For Atari-scale buffers (1M × 108 KB ≈ 108 GB) set storage_device: cpu
-            # so the buffer lives in RAM; batches are moved to GPU in step() via .to().
-            storage_device_str = buf.get("storage_device", None)
-            storage_device = torch.device(storage_device_str) if storage_device_str else self.device
-            storage = LazyTensorStorage(int(buf["capacity"]), device=storage_device)
-        self.replay_buffer = TensorDictReplayBuffer(
-            storage=storage,
-            sampler=RandomSampler(),
-            batch_size=int(buf["batch_size"]),
-            prefetch=prefetch if prefetch > 0 else None,
+        )
+        loss_module.make_value_estimator(gamma=self.gamma, device=self.device)
+        loss_module = loss_module.to(self.device)
+        self.target_net_updater = HardUpdate(
+            loss_module, value_network_update_interval=self.hard_update_freq
         )
 
-        # --- Optimizer ---
-        self.optimizer = torch.optim.Adam(
-            self.loss_module.parameters(),
-            lr=self.lr,
+        # Create the optimizer
+        self.optimizer = torch.optim.Adam(loss_module.parameters(), lr=self.lr)
+
+    def get_collector_config(self) -> CollectorConfig:
+        return CollectorConfig(
+            frames_per_batch=self.frames_per_batch,
+            init_random_frames=self.init_random_frames,
+            max_frames_per_traj=self.max_frames_per_traj,
+            batch_size=self.batch_size,
         )
 
-        # --- Optional torch.compile on the loss module ---
-        if self.compile:
-            self.loss_module = torch.compile(self.loss_module, dynamic=False)
+        
 
+    def step(self, batch: TensorDict) -> dict[str, float]:
+        # anneal epsilon
+        self.greedy_policy.step(batch.numel())
+
+        # Store transition in the replay buffer
+        self.replay_buffer.extend(batch)
+
+        # Optimize the Q-network
+        
+        for j in range(self.num_updates):
+            sampled_tensordict = self.replay_buffer.sample(self.batch_size)
+            sampled_tensordict = sampled_tensordict.to(self.device)
+            loss_td = self.loss_module(sampled_tensordict)
+            q_loss = loss_td["loss"]
+            q_loss.backward()
+            self.optimizer.step()
+            self.target_net_updater.step()
+
+
+        return {
+            "loss/td": q_loss.item(),
+            "q/mean": sampled_tensordict["action_value"].mean().item(),
+       
+        }
+  
     # ------------------------------------------------------------------
     # Policy access
     # ------------------------------------------------------------------
@@ -199,58 +176,17 @@ class DQNAlgorithm(BaseAlgorithm):
     def get_explore_policy(self) -> TensorDictModule:
         return self._explore_policy
 
-    # ------------------------------------------------------------------
-    # Collector configuration
-    # ------------------------------------------------------------------
-
-    def get_collector_config(self) -> CollectorConfig:
-        return CollectorConfig(
-            frames_per_batch=self.frames_per_batch,
-            total_frames=int(self.cfg.trainer.total_frames),
-        )
 
     # ------------------------------------------------------------------
     # Training hooks
     # ------------------------------------------------------------------
 
-    def on_batch_collected(self, batch: TensorDict) -> TensorDict:
-        """Store transitions in replay buffer (runs even during warmup)."""
-        self.replay_buffer.extend(batch.reshape(-1))
-        return batch
+
 
     def should_skip_update(self, frames_collected: int) -> bool:
         return frames_collected < self.init_random_frames
 
-    def step(self, batch: TensorDict) -> dict[str, float]:
-        """Run gradient updates, sampling one mini-batch at a time."""
-        mb_size = int(self._replay_buffer_cfg["batch_size"])
 
-        total_loss = 0.0
-        total_q = 0.0
-        for _ in range(self.updates_per_step):
-            # Sample and immediately move to device; release after each update so
-            # only one mini-batch (mb_size × obs + next_obs) lives on GPU at a time.
-            # Atari: 32 × 2 × 112 KB = 7 MB vs. the old 3200 × 2 × 112 KB = 700 MB.
-            sample = self.replay_buffer.sample(mb_size).to(self.device)
-            loss_td = self.loss_module(sample)
-            loss = loss_td["loss"]
-
-            self.optimizer.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(
-                self.loss_module.parameters(), self.max_grad_norm
-            )
-            self.optimizer.step()
-            self.target_updater.step()
-
-            total_loss += loss.item()
-            total_q += loss_td.get("pred_value", torch.tensor(0.0)).mean().item()
-            del sample, loss_td, loss
-
-        return {
-            "loss/td": total_loss / self.updates_per_step,
-            "q/mean": total_q / self.updates_per_step,
-        }
 
     def on_step_complete(self, frames_collected: int) -> None:
         """Decay epsilon."""

@@ -82,12 +82,14 @@ class BaseTrainer(ABC):
         """Create environment and set up the algorithm."""
         num_envs = int(self.trainer_cfg.get("num_envs", 1))
 
-        self.train_env = self.environment.make_env(
-            num_envs=num_envs,
-            device=str(self.device),
-        )
+        def make_env():
+            return self.environment.make_env(
+                num_envs=num_envs,
+                device=str(self.device),
+            )
 
-        self.algorithm.setup(self.train_env)
+        self.train_env = make_env()
+        self.algorithm.setup(make_env)
 
     def fit(self) -> dict[str, float]:
         """Run the full training loop.

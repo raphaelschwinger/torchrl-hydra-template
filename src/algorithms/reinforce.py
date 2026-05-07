@@ -9,6 +9,8 @@ Architecture:
 """
 from __future__ import annotations
 
+from typing import Callable
+
 import torch
 import torch.nn as nn
 from omegaconf import DictConfig, OmegaConf
@@ -58,7 +60,7 @@ class ReinforceAlgorithm(BaseAlgorithm):
             "activation": "tanh", "layer_norm": False,
         }
 
-    def setup(self, env: EnvBase) -> None:
+    def setup(self, make_env: Callable[[], EnvBase]) -> None:
         from torchrl.modules import ProbabilisticActor
         from torchrl.modules.distributions import OneHotCategorical
 

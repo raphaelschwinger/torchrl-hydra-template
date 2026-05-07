@@ -5,14 +5,17 @@ _target_: src.algorithms.dqn.DQNAlgorithm
 frames_per_batch: 200
 init_random_frames: 5_000
 
-# Replay buffer
+# Replay buffer (Hydra instantiate: override _target_ to swap implementation)
 replay_buffer:
+  _target_: src.algorithms.dqn_replay_buffer.build_dqn_replay_buffer
   capacity: 100_000
   batch_size: 128
   storage: tensor       # "tensor" (in-memory) or "mmap" (disk-backed)
-  storage_device: null  # tensor only: device for storage; null → same as trainer device
+  storage_device: null  # device for storage; null → same as trainer device
                         # Set "cpu" for Atari-scale buffers (1M × 108 KB = ~108 GB)
   scratch_dir: null     # mmap only: directory for backing files; null → /tmp
+  prefetch: null        # optional async prefetch (requires batch_size); null = off
+  pin_memory: false
 
 # Optimization
 lr: 1e-4

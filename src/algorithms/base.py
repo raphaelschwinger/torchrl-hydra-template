@@ -6,7 +6,7 @@ methods — the algorithm never manages the loop itself.
 
 Lifecycle (called by Trainer):
     1. ``__init__(cfg, device)`` — store config
-    2. ``setup(env)`` — build networks, loss, optimizer using a live env
+    2. ``setup(make_env)`` — build networks, loss, optimizer (call ``make_env()`` for specs)
     3. Training loop — Trainer calls ``step(batch)`` repeatedly
     4. Checkpointing — ``save_checkpoint`` / ``load_checkpoint``
 """
@@ -15,7 +15,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import torch
 from omegaconf import DictConfig
@@ -42,9 +42,8 @@ class CollectorConfig:
     """
 
     frames_per_batch: int
-    total_frames: int
     init_random_frames: int = 0
-    split_trajs: bool = False
+    max_frames_per_traj: int = -1 # -1 means no limit
 
 
 class BaseAlgorithm(ABC):
@@ -56,8 +55,7 @@ class BaseAlgorithm(ABC):
         device: resolved ``torch.device`` (set by the Trainer)
     """
 
-    def __init__(self, cfg: DictConfig, device: torch.device) -> None:
-        self.cfg = cfg
+    def __init__(self, device: torch.device) -> None:
         self.device = device
 
     # ------------------------------------------------------------------
@@ -65,12 +63,14 @@ class BaseAlgorithm(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def setup(self, env: EnvBase) -> None:
+    def setup(self, make_env: Callable[[], EnvBase]) -> None:
         """Build networks, loss module, and optimizer.
 
-        Called once by the Trainer after env creation.  The *env* is passed
-        so the algorithm can read ``action_spec``, ``observation_spec``, etc.
-        The algorithm should **not** store the env — the Trainer owns it.
+        Called once by the Trainer.  ``make_env`` is a zero-argument factory
+        that returns a fresh environment; the algorithm calls it to read
+        ``action_spec``, ``observation_spec``, etc.  The algorithm should
+        **not** keep a long-lived reference to the env — the Trainer owns
+        the env used for collection and evaluation.
         """
 
     # ------------------------------------------------------------------

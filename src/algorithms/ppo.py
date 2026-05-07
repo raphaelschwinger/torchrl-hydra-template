@@ -12,6 +12,8 @@ Architecture:
 """
 from __future__ import annotations
 
+from typing import Callable
+
 import torch
 import torch.nn as nn
 from omegaconf import DictConfig, OmegaConf
@@ -79,7 +81,7 @@ class PPOAlgorithm(BaseAlgorithm):
             "activation": "tanh", "layer_norm": False,
         }
 
-    def setup(self, env: EnvBase) -> None:
+    def setup(self, make_env: Callable[[], EnvBase]) -> None:
         from torchrl.modules import (
             NormalParamExtractor,
             ProbabilisticActor,
@@ -89,6 +91,7 @@ class PPOAlgorithm(BaseAlgorithm):
         from torchrl.objectives import ClipPPOLoss
         from torchrl.objectives.value import GAE
 
+        env = make_env()
         ecfg = self.cfg.environment
         obs_shape = tuple(ecfg.obs_shape)
         num_actions = int(ecfg.num_actions)

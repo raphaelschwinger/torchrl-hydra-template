@@ -144,7 +144,7 @@ configs/
 ## Adding a new algorithm
 
 1. Create `src/algorithms/my_algo.py` following the explicit-kwargs pattern above.
-2. Implement `setup(env)`, `step(batch) -> dict`, `get_policy()`, `get_explore_policy()`, `_get_training_state()`, `_load_training_state()`.
+2. Implement `setup(make_env)` (zero-arg env factory; call `env = make_env()` only if you need env specs), `step(batch) -> dict`, `get_policy()`, `get_explore_policy()`, `_get_training_state()`, `_load_training_state()`.
 3. Add `get_collector_config()` if using `StepTrainer` (see `src/trainers/StepTrainer.py`).
 4. Create `configs/algorithm/my_algo.yaml` with `_target_` and any non-default values.
 5. Create `configs/experiment/my_algo/<env>.yaml` with defaults overrides.
