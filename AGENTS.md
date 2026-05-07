@@ -27,7 +27,7 @@ The template's value is:
 - `configs/algorithm/<name>.yaml` defines the algorithm-side composition: which trainer, loss, replay buffer, optimizer, default networks. References `${env.*}` keys via OmegaConf interpolation.
 - `configs/environment/<name>.yaml` defines the env factory + transforms and exposes `env.obs_dim`, `env.action_dim`, and (for continuous-action algos) `env.policy_out_dim`.
 - `configs/experiment/<algo>/<env>.yaml` glues an algorithm + environment together with `# @package _global_` and `override` directives.
-- `configs/logger/{csv,wandb,tensorboard}.yaml` sets the logger; switch from CLI with `logger=wandb`.
+- `configs/logger/{csv,wandb,tensorboard}.yaml` sets the logger; default is `wandb`, switch from CLI with `logger=csv` or `logger=tensorboard`.
 
 ### Schema-typed configs
 

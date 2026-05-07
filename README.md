@@ -87,7 +87,7 @@ train.yaml
     - paths: default
     - algorithm: ???      # required: dqn / ppo / reinforce / ...
     - environment: ???    # required: cartpole / pendulum / halfcheetah / atari_pong / ...
-    - logger: csv         # default; switch with `logger=wandb`
+    - logger: wandb       # default; switch with `logger=csv` or `logger=tensorboard`
     - experiment: null    # optional bundle (overrides algorithm + environment)
 ```
 

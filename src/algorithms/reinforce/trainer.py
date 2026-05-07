@@ -18,6 +18,7 @@ import torch
 from torchrl.collectors.collectors import DataCollectorBase
 from torchrl.objectives import LossModule
 from torchrl.trainers import Trainer
+from torchrl.trainers.trainers import LogScalar
 
 
 def make_reinforce_trainer(
@@ -63,7 +64,7 @@ def make_reinforce_trainer(
     if total_frames is None:
         total_frames = collector.total_frames
 
-    return Trainer(
+    trainer = Trainer(
         collector=collector,
         total_frames=total_frames,
         frame_skip=frame_skip,
@@ -79,3 +80,14 @@ def make_reinforce_trainer(
         log_interval=log_interval,
         save_trainer_file=save_trainer_file,
     )
+
+    log_reward = LogScalar(
+        key=("next", "reward"),
+        logname="r_training",
+        log_pbar=True,
+        include_std=True,
+        reduction="mean",
+    )
+    trainer.register_op("pre_steps_log", log_reward)
+
+    return trainer
