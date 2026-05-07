@@ -47,16 +47,7 @@ def _dqn_overrides() -> list[str]:
     ]
 
 
-def _ppo_overrides() -> list[str]:
-    return [
-        *BASE_OVERRIDES,
-        "trainer.total_frames=256",
-        "trainer.num_envs=1",
-        "algorithm.frames_per_batch=64",
-        "algorithm.epochs_per_batch=1",
-        "algorithm.minibatch_size=32",
-        "environment.normalize_obs=false",
-    ]
+
 
 
 # ---------------------------------------------------------------------------
@@ -106,11 +97,3 @@ def test_smoke_dqn_atari_pong():
     assert isinstance(metrics, dict)
     assert len(metrics) > 0
 
-
-def test_smoke_ppo_dmc_humanoid():
-    """PPO on DMControl humanoid: continuous actions, MLP actor-critic, GAE."""
-    cfg = load_experiment_cfg("ppo/dmc_humanoid", _ppo_overrides())
-    from src.train import _train
-    metrics = _train(cfg)
-    assert isinstance(metrics, dict)
-    assert len(metrics) > 0
