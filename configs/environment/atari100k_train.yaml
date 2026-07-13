@@ -1,0 +1,28 @@
+name: ALE/${atari.game}-v5
+gym_backend: gymnasium
+gym_kwargs:
+  frameskip: 1
+  repeat_action_probability: 0.0
+  disable_env_checker: true
+  from_pixels: true
+  pixels_only: false
+  categorical_action_encoding: false
+
+# Atari 100K preprocessing uses TorchRL random no-ops, custom max-and-skip,
+# custom life-loss terminals for training, and 84x84 grayscale frames.
+# Frame stacking is intentionally owned by the Atari100K algorithm/replay.
+transforms:
+  - _target_: src.environments.atari_wrappers.AtariPreprocessingTransform
+    frame_skip: 4
+    terminal_on_life_loss: true
+  - _target_: torchrl.envs.NoopResetEnv
+    noops: 30
+    random: true
+  - _target_: torchrl.envs.ToTensorImage
+  - _target_: torchrl.envs.GrayScale
+  - _target_: torchrl.envs.Resize
+    w: 84
+    h: 84
+  - _target_: torchrl.envs.RewardSum
+  - _target_: torchrl.envs.StepCounter
+    max_steps: 27000
