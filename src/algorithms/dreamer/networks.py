@@ -67,13 +67,32 @@ class BlockLinear(nn.Module):
 
 
 class Conv2dSamePad(nn.Conv2d):
-    """A Conv2d layer that emulates TensorFlow's 'SAME' padding."""
+    """A Conv2d layer that emulates TensorFlow's 'SAME' padding.
+
+    For stride 1 with an odd kernel and no dilation (the only configuration
+    used in this codebase) SAME padding equals the constant symmetric
+    ``k // 2``, which is passed to cuDNN directly. The runtime ``F.pad``
+    fallback below materialises a padded copy of the activations on every
+    forward/backward, which is measurably slower.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._static_same = (
+            all(s == 1 for s in self.stride)
+            and all(k % 2 == 1 for k in self.kernel_size)
+            and all(d == 1 for d in self.dilation)
+        )
+        if self._static_same:
+            self.padding = tuple(k // 2 for k in self.kernel_size)
 
     def _calc_same_pad(self, i: int, k: int, s: int, d: int) -> int:
         i_div_s_ceil = (i + s - 1) // s
         return max((i_div_s_ceil - 1) * s + (k - 1) * d + 1 - i, 0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self._static_same:
+            return super().forward(x)
         ih, iw = x.size()[-2:]
         pad_h = self._calc_same_pad(
             ih, self.kernel_size[0], self.stride[0], self.dilation[0]

@@ -116,6 +116,11 @@ class DreamerV3(nn.Module):
         self._scheduler = LambdaLR(self._optimizer, lr_lambda=lr_lambda)
         self.train()
         self.clone_and_freeze()
+        # All shapes are static, so cuDNN conv-algorithm autotuning is safe.
+        # TF32 speeds up the float32 ops that autocast keeps out of bfloat16.
+        if self.device.type == "cuda":
+            torch.backends.cudnn.benchmark = True
+            torch.set_float32_matmul_precision("high")
         if config.compile:
             print("Compiling update function with torch.compile...", flush=True)
             self._cal_grad = torch.compile(self._cal_grad, mode="reduce-overhead")
@@ -389,11 +394,13 @@ class DreamerV3(nn.Module):
             weight[:, :-1].detach() * -(logpi * adv.detach() + self.act_entropy * entropy)
         )
         tar_padded = torch.cat([ret, 0 * ret[:, -1:]], 1)
+        # One value forward reused for both log_probs (the dist just wraps logits).
+        imag_value_dist = self.value(imag_feat)
         losses["value"] = torch.mean(
             weight[:, :-1].detach()
             * (
-                -self.value(imag_feat).log_prob(tar_padded.detach())
-                - self.value(imag_feat).log_prob(imag_slow_value.detach())
+                -imag_value_dist.log_prob(tar_padded.detach())
+                - imag_value_dist.log_prob(imag_slow_value.detach())
             )[:, :-1].unsqueeze(-1)
         )
 
@@ -422,11 +429,12 @@ class DreamerV3(nn.Module):
         slow_value = self._frozen_slow_value(feat).mode()
         ret = self._lambda_return(last, term, reward, value, boot, disc, self.lamb)
         ret_padded = torch.cat([ret, 0 * ret[:, -1:]], 1)
+        rep_value_dist = self.value(feat)
         losses["repval"] = torch.mean(
             (1.0 - last)[:, :-1]
             * (
-                -self.value(feat).log_prob(ret_padded.detach())
-                - self.value(feat).log_prob(slow_value.detach())
+                -rep_value_dist.log_prob(ret_padded.detach())
+                - rep_value_dist.log_prob(slow_value.detach())
             )[:, :-1].unsqueeze(-1)
         )
         metrics.update(tools.tensorstats(ret, "ret_replay"))
