@@ -122,8 +122,11 @@ class DreamerV3(nn.Module):
             torch.backends.cudnn.benchmark = True
             torch.set_float32_matmul_precision("high")
         if config.compile:
-            print("Compiling update function with torch.compile...", flush=True)
-            self._cal_grad = torch.compile(self._cal_grad, mode="reduce-overhead")
+            # compile: true -> "reduce-overhead"; or pass a torch.compile mode
+            # string directly (e.g. "max-autotune") for A/B testing.
+            mode = config.compile if isinstance(config.compile, str) else "reduce-overhead"
+            print(f"Compiling update function with torch.compile (mode={mode})...", flush=True)
+            self._cal_grad = torch.compile(self._cal_grad, mode=mode)
 
     # ------------------------------------------------------------------
     # Subclass hooks
@@ -371,8 +374,12 @@ class DreamerV3(nn.Module):
         imag_reward = self._frozen_reward(imag_feat).mode()
         # (B*T, T_imag, 1)  probability of continuation
         imag_cont = self._frozen_cont(imag_feat).mean
+        # One trainable value forward serves both the targets (mode, detached)
+        # and the value loss (log_prob) below — the frozen copy shares weights,
+        # so a separate frozen forward would be identical work done twice.
+        imag_value_dist = self.value(imag_feat)
         # (B*T, T_imag, 1)
-        imag_value = self._frozen_value(imag_feat).mode()
+        imag_value = imag_value_dist.mode().detach()
         imag_slow_value = self._frozen_slow_value(imag_feat).mode()
         disc = 1 - 1 / self.horizon
         # (B*T, T_imag, 1)
@@ -394,8 +401,6 @@ class DreamerV3(nn.Module):
             weight[:, :-1].detach() * -(logpi * adv.detach() + self.act_entropy * entropy)
         )
         tar_padded = torch.cat([ret, 0 * ret[:, -1:]], 1)
-        # One value forward reused for both log_probs (the dist just wraps logits).
-        imag_value_dist = self.value(imag_feat)
         losses["value"] = torch.mean(
             weight[:, :-1].detach()
             * (
@@ -425,11 +430,12 @@ class DreamerV3(nn.Module):
         reward = to_f32(data["next", "reward"])
         feat = self.rssm.get_feat(post_stoch, post_deter)
         boot = ret[:, 0].reshape(B, T, 1)
-        value = self._frozen_value(feat).mode()
+        # Same weight-sharing argument as in the imagination block above.
+        rep_value_dist = self.value(feat)
+        value = rep_value_dist.mode().detach()
         slow_value = self._frozen_slow_value(feat).mode()
         ret = self._lambda_return(last, term, reward, value, boot, disc, self.lamb)
         ret_padded = torch.cat([ret, 0 * ret[:, -1:]], 1)
-        rep_value_dist = self.value(feat)
         losses["repval"] = torch.mean(
             (1.0 - last)[:, :-1]
             * (

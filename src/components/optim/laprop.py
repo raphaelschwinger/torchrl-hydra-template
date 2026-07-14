@@ -47,72 +47,150 @@ class LaProp(Optimizer):
         """Performs a single optimization step."""
 
         for group in self.param_groups:
-            for p in group["params"]:
-                if p.grad is None:
-                    continue
-                grad = p.grad.data
-                if grad.is_sparse:
-                    raise RuntimeError("Adam does not support sparse gradients, please consider SparseAdam instead")
-                amsgrad = group["amsgrad"]
-                centered = group["centered"]
+            if group["amsgrad"] or group["centered"]:
+                self._step_group_per_param(group)
+            else:
+                self._step_group_foreach(group)
 
-                state = self.state[p]
+    def _step_group_foreach(self, group):
+        """Batched update via ``torch._foreach_*`` (plain LaProp only).
 
-                # State initialization
-                if len(state) == 0:
-                    state["step"] = 0
-                    # Exponential moving average of gradient values
-                    state["exp_avg"] = torch.zeros_like(p.data)
-                    # Exponential moving average of learning rates
-                    state["exp_avg_lr_1"] = 0.0
-                    state["exp_avg_lr_2"] = 0.0
-                    # Exponential moving average of squared gradient values
-                    state["exp_avg_sq"] = torch.zeros_like(p.data)
-                    if centered:
-                        # Exponential moving average of gradient values as calculated by beta2
-                        state["exp_mean_avg_beta2"] = torch.zeros_like(p.data)
-                    if amsgrad:
-                        # Maintains max of all exp. moving avg. of sq. grad. values
-                        state["max_exp_avg_sq"] = torch.zeros_like(p.data)
+        Numerically identical to the per-param path: same ops in the same
+        order, batched across parameters to cut ~6 kernel launches per tensor
+        down to ~6 per bucket. Parameters are bucketed by (step count,
+        device, dtype) so the scalar EMA-of-lr states stay exact even if a
+        parameter ever skips a step (grad is None).
+        """
+        beta1, beta2 = group["betas"]
+        lr = group["lr"]
+        eps = group["eps"]
+        weight_decay = group["weight_decay"]
 
-                exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
+        buckets: dict = {}
+        for p in group["params"]:
+            if p.grad is None:
+                continue
+            if p.grad.is_sparse:
+                raise RuntimeError("Adam does not support sparse gradients, please consider SparseAdam instead")
+            state = self.state[p]
+            if len(state) == 0:
+                state["step"] = 0
+                state["exp_avg"] = torch.zeros_like(p.data)
+                state["exp_avg_lr_1"] = 0.0
+                state["exp_avg_lr_2"] = 0.0
+                state["exp_avg_sq"] = torch.zeros_like(p.data)
+            key = (
+                state["step"],
+                state["exp_avg_lr_1"],
+                state["exp_avg_lr_2"],
+                p.device,
+                p.dtype,
+            )
+            buckets.setdefault(key, []).append(p)
+
+        for (step, *_), params in buckets.items():
+            grads = [p.grad.data for p in params]
+            exp_avgs = [self.state[p]["exp_avg"] for p in params]
+            exp_avg_sqs = [self.state[p]["exp_avg_sq"] for p in params]
+
+            # Scalar states evolve identically for all params in the bucket.
+            exp_avg_lr_1 = self.state[params[0]]["exp_avg_lr_1"] * beta1 + (1 - beta1) * lr
+            exp_avg_lr_2 = self.state[params[0]]["exp_avg_lr_2"] * beta2 + (1 - beta2)
+            for p in params:
+                st = self.state[p]
+                st["step"] = step + 1
+                st["exp_avg_lr_1"] = exp_avg_lr_1
+                st["exp_avg_lr_2"] = exp_avg_lr_2
+
+            bias_correction1 = exp_avg_lr_1 / lr if lr != 0.0 else 1.0
+            step_size = 1 / bias_correction1
+            bias_correction2 = exp_avg_lr_2
+
+            # exp_avg_sq = beta2 * exp_avg_sq + (1 - beta2) * grad^2
+            torch._foreach_mul_(exp_avg_sqs, beta2)
+            torch._foreach_addcmul_(exp_avg_sqs, grads, grads, value=1 - beta2)
+            # denom = sqrt(exp_avg_sq / bias_correction2) + eps  (out of place)
+            denom = torch._foreach_div(exp_avg_sqs, bias_correction2)
+            torch._foreach_sqrt_(denom)
+            torch._foreach_add_(denom, eps)
+            # LaProp: RMS-normalise the gradient BEFORE the momentum average.
+            step_grads = torch._foreach_div(grads, denom)
+            torch._foreach_mul_(exp_avgs, beta1)
+            torch._foreach_add_(exp_avgs, step_grads, alpha=(1 - beta1) * lr)
+            torch._foreach_add_([p.data for p in params], exp_avgs, alpha=-step_size)
+            if weight_decay != 0:
+                torch._foreach_add_(
+                    [p.data for p in params], [p.data for p in params], alpha=-weight_decay
+                )
+
+    def _step_group_per_param(self, group):
+        """Original per-parameter path (supports amsgrad / centered)."""
+        for p in group["params"]:
+            if p.grad is None:
+                continue
+            grad = p.grad.data
+            if grad.is_sparse:
+                raise RuntimeError("Adam does not support sparse gradients, please consider SparseAdam instead")
+            amsgrad = group["amsgrad"]
+            centered = group["centered"]
+
+            state = self.state[p]
+
+            # State initialization
+            if len(state) == 0:
+                state["step"] = 0
+                # Exponential moving average of gradient values
+                state["exp_avg"] = torch.zeros_like(p.data)
+                # Exponential moving average of learning rates
+                state["exp_avg_lr_1"] = 0.0
+                state["exp_avg_lr_2"] = 0.0
+                # Exponential moving average of squared gradient values
+                state["exp_avg_sq"] = torch.zeros_like(p.data)
                 if centered:
-                    exp_mean_avg_beta2 = state["exp_mean_avg_beta2"]
+                    # Exponential moving average of gradient values as calculated by beta2
+                    state["exp_mean_avg_beta2"] = torch.zeros_like(p.data)
                 if amsgrad:
-                    max_exp_avg_sq = state["max_exp_avg_sq"]
-                beta1, beta2 = group["betas"]
+                    # Maintains max of all exp. moving avg. of sq. grad. values
+                    state["max_exp_avg_sq"] = torch.zeros_like(p.data)
 
-                state["step"] += 1
+            exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
+            if centered:
+                exp_mean_avg_beta2 = state["exp_mean_avg_beta2"]
+            if amsgrad:
+                max_exp_avg_sq = state["max_exp_avg_sq"]
+            beta1, beta2 = group["betas"]
 
-                # Decay the first and second moment running average coefficient
-                exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
+            state["step"] += 1
 
-                state["exp_avg_lr_1"] = state["exp_avg_lr_1"] * beta1 + (1 - beta1) * group["lr"]
-                state["exp_avg_lr_2"] = state["exp_avg_lr_2"] * beta2 + (1 - beta2)
+            # Decay the first and second moment running average coefficient
+            exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
-                bias_correction1 = (
-                    state["exp_avg_lr_1"] / group["lr"] if group["lr"] != 0.0 else 1.0
-                )  # 1 - beta1 ** state['step']
-                step_size = 1 / bias_correction1
+            state["exp_avg_lr_1"] = state["exp_avg_lr_1"] * beta1 + (1 - beta1) * group["lr"]
+            state["exp_avg_lr_2"] = state["exp_avg_lr_2"] * beta2 + (1 - beta2)
 
-                bias_correction2 = state["exp_avg_lr_2"]
-                denom = exp_avg_sq
-                if centered:
-                    exp_mean_avg_beta2.mul_(beta2).add_(1 - beta2, grad)
-                    if state["step"] > self.steps_before_using_centered:
-                        mean = exp_mean_avg_beta2**2
-                        denom = denom - mean
+            bias_correction1 = (
+                state["exp_avg_lr_1"] / group["lr"] if group["lr"] != 0.0 else 1.0
+            )  # 1 - beta1 ** state['step']
+            step_size = 1 / bias_correction1
 
-                if amsgrad and not (centered and state["step"] <= self.steps_before_using_centered):
-                    # Maintains the maximum of all (centered) 2nd moment running avg. till now
-                    torch.max(max_exp_avg_sq, denom, out=max_exp_avg_sq)
-                    # Use the max. for normalizing running avg. of gradient
-                    denom = max_exp_avg_sq
+            bias_correction2 = state["exp_avg_lr_2"]
+            denom = exp_avg_sq
+            if centered:
+                exp_mean_avg_beta2.mul_(beta2).add_(grad, alpha=1 - beta2)
+                if state["step"] > self.steps_before_using_centered:
+                    mean = exp_mean_avg_beta2**2
+                    denom = denom - mean
 
-                denom = denom.div(bias_correction2).sqrt_().add_(group["eps"])
-                step_of_this_grad = grad / denom
-                exp_avg.mul_(beta1).add_((1 - beta1) * group["lr"], step_of_this_grad)
+            if amsgrad and not (centered and state["step"] <= self.steps_before_using_centered):
+                # Maintains the maximum of all (centered) 2nd moment running avg. till now
+                torch.max(max_exp_avg_sq, denom, out=max_exp_avg_sq)
+                # Use the max. for normalizing running avg. of gradient
+                denom = max_exp_avg_sq
 
-                p.data.add_(-step_size, exp_avg)
-                if group["weight_decay"] != 0:
-                    p.data.add_(-group["weight_decay"], p.data)
+            denom = denom.div(bias_correction2).sqrt_().add_(group["eps"])
+            step_of_this_grad = grad / denom
+            exp_avg.mul_(beta1).add_(step_of_this_grad, alpha=(1 - beta1) * group["lr"])
+
+            p.data.add_(exp_avg, alpha=-step_size)
+            if group["weight_decay"] != 0:
+                p.data.add_(p.data, alpha=-group["weight_decay"])
