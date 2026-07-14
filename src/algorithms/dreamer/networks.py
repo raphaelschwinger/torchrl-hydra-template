@@ -118,7 +118,23 @@ class Conv2dSamePad(nn.Conv2d):
         )
 
 
-class RMSNorm2D(nn.RMSNorm):
+class RMSNormF32(nn.RMSNorm):
+    """RMSNorm computed in float32 and cast back to the input dtype.
+
+    Matches the official DreamerV3 ``Norm``, which upcasts to f32 for the
+    normalisation regardless of the bf16 autocast compute dtype. Keeping the
+    input and weight dtypes consistent also preserves the fused kernel path
+    (mixed bf16-input/f32-weight falls back to the slow unfused
+    implementation).
+    """
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return F.rms_norm(
+            x.float(), self.normalized_shape, self.weight, self.eps
+        ).to(x.dtype)
+
+
+class RMSNorm2D(RMSNormF32):
     """RMSNorm over channel-last format applied to 4D tensors."""
 
     def __init__(self, ch: int, eps: float = 1e-3, dtype=None):
@@ -292,7 +308,7 @@ class ConvEncoder(nn.Module):
             )
             layers.append(nn.MaxPool2d(2, 2))
             if config.norm:
-                layers.append(RMSNorm2D(depth, eps=1e-04, dtype=torch.bfloat16))
+                layers.append(RMSNorm2D(depth, eps=1e-04))
             layers.append(act())
             in_dim = depth
             h, w = h // 2, w // 2
@@ -333,12 +349,12 @@ class ConvDecoder(nn.Module):
         self.sp0 = BlockLinear(deter, u, g)
         self.sp1 = nn.Sequential(
             nn.Linear(flat_stoch, 2 * self.units),
-            nn.RMSNorm(2 * self.units, eps=1e-04, dtype=torch.bfloat16),
+            RMSNormF32(2 * self.units, eps=1e-04),
             act(),
         )
         self.sp2 = nn.Linear(2 * self.units, math.prod(self.min_shape))
         self.sp_norm = nn.Sequential(
-            nn.RMSNorm(self.depths[-1], eps=1e-04, dtype=torch.bfloat16), act()
+            RMSNormF32(self.depths[-1], eps=1e-04), act()
         )
         layers = []
         in_dim = self.depths[-1]
@@ -347,7 +363,7 @@ class ConvDecoder(nn.Module):
             layers.append(
                 Conv2dSamePad(in_dim, depth, self.kernel_size, stride=1, bias=True)
             )
-            layers.append(RMSNorm2D(depth, eps=1e-04, dtype=torch.bfloat16))
+            layers.append(RMSNorm2D(depth, eps=1e-04))
             layers.append(act())
             in_dim = depth
         layers.append(nn.Upsample(scale_factor=2, mode="nearest"))
@@ -420,7 +436,7 @@ class MLP(nn.Module):
             )
             self.layers.add_module(
                 f"{config.name}_norm{i}",
-                nn.RMSNorm(config.units, eps=1e-04, dtype=torch.bfloat16),
+                RMSNormF32(config.units, eps=1e-04),
             )
             self.layers.add_module(f"{config.name}_act{i}", act())
             inp_dim = config.units
