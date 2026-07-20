@@ -1,0 +1,18 @@
+# @package _global_
+defaults:
+  - override /algorithm: bbf
+  - override /environment: atari100k_train
+  - override /environment@eval_environment: atari100k_eval
+  - override /logger: wandb
+  - _self_
+
+atari:
+  game: Jamesbond
+
+trainer:
+  total_frames: 100_000
+  seed: 1
+  accelerator: gpu
+  devices: [0]
+  num_envs: 1
+  log_every_n_steps: 1_000

@@ -1,0 +1,42 @@
+_target_: src.algorithms.bbf.algorithm.BBFAlgorithm
+
+seed: ${trainer.seed}
+obs_key: pixels
+replay_capacity: 200_000
+frames_per_batch: 1
+max_frames_per_traj: -1
+
+gamma: 0.997
+update_horizon: 3
+max_update_horizon: 10
+min_gamma: 0.97
+cycle_steps: 10000
+min_replay_history: 2000
+target_update_period: 1
+target_update_tau: 0.005
+epsilon_train: 0.0
+epsilon_eval: 0.001
+epsilon_decay_period: 2001
+noisy: false
+dueling: true
+double_dqn: true
+distributional: true
+replay_ratio: 64
+batch_size: 32
+learning_rate: 1e-4
+adam_eps: 1.5e-4
+weight_decay: 0.1
+encoder_type: impala
+hidden_dim: 2048
+width_scale: 4
+renormalize_output: true
+data_augmentation: true
+batches_to_group: 2
+spr_weight: 5.0
+jumps: 5
+reset_every: 20000
+no_resets_after: 100000
+shrink_perturb_keys: [encoder, transition_model]
+shrink_factor: 0.5
+perturb_factor: 0.5
+target_action_selection: true
