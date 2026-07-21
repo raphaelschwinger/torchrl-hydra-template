@@ -1,0 +1,17 @@
+# @package _global_
+# Update-granularity ablation on top of dreamer/atari100k: batch_size 16->32,
+# train_ratio unchanged (128). DreamerAlgorithm derives frames_per_update from
+# batch_size*batch_length/train_ratio, so doubling batch_size alone halves
+# update frequency (16 -> 32 env steps/update) and keeps the replay ratio
+# identical to the base experiment. The RSSM's 64-step scan is under-utilised
+# at batch 16, so a batch-32 update costs less than 2x a batch-16 one while
+# running half as often — a net wall-clock win IF it doesn't need a different
+# learning rate/schedule to match the base experiment's scores (untested;
+# fewer, less noisy gradient steps can change the optimisation trajectory).
+defaults:
+  - /experiment/dreamer/atari100k
+  - _self_
+
+algorithm:
+  buffer_config:
+    batch_size: 32

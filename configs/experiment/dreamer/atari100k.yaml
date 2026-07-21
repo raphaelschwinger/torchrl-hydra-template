@@ -1,4 +1,7 @@
 # @package _global_
+# Generic Atari100k Dreamer experiment. Override env_id/environment.name for a
+# different game, e.g.:
+#   experiment=dreamer/atari100k env_id=hero environment.name=ALE/Hero-v5
 defaults:
   - /algorithm/dreamer: 200m
   - override /algorithm: dreamer
@@ -6,10 +9,10 @@ defaults:
   - override /logger: wandb_dreamer
   - _self_
 
-env_id: hero
+env_id: jamesbond
 
 environment:
-  name: ALE/Hero-v5
+  name: ALE/Jamesbond-v5
 
 trainer:
   accelerator: gpu

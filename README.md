@@ -40,7 +40,7 @@ Two derived rules:
 | DQN       | ALE/Pong-v5    | `experiment=dqn/pong`           |
 | DDPG      | HalfCheetah-v4 | `experiment=ddpg/halfcheetah`   |
 | A2C       | HalfCheetah-v4 | `experiment=a2c/halfcheetah`    |
-| DreamerV3       | ALE/Hero-v5<br>(Atari100k) | `experiment=dreamer/hero`  |
+| DreamerV3       | ALE/Jamesbond-v5<br>(Atari100k) | `experiment=dreamer/atari100k`  |
 
 Other algorithms will follow.
 

@@ -154,10 +154,10 @@ def _dreamer_overrides() -> list[str]:
     ]
 
 
-def test_smoke_dreamer_hero():
-    """DreamerV3 on ALE/Hero-v5: pixel obs, RSSM world model, actor-critic."""
+def test_smoke_dreamer_atari100k():
+    """DreamerV3 on Atari100k (default env): pixel obs, RSSM world model, actor-critic."""
     pytest.importorskip("ale_py")
-    cfg = load_experiment_cfg("dreamer/hero", _dreamer_overrides())
+    cfg = load_experiment_cfg("dreamer/atari100k", _dreamer_overrides())
     from src.train import _train
 
     metrics = _train(cfg)
