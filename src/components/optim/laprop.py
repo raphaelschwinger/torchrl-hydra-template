@@ -28,7 +28,7 @@ from torch.optim import Optimizer
 
 
 class LaProp(Optimizer):
-    def __init__(self, params, lr=4e-4, betas=(0.9, 0.999), eps=1e-15, weight_decay=0, amsgrad=False, centered=False):
+    def __init__(self, params, lr=4e-4, betas=(0.9, 0.999), eps=1e-15, weight_decay=0, amsgrad=False, centered=False, foreach=True):
 
         self.steps_before_using_centered = 10
 
@@ -40,14 +40,14 @@ class LaProp(Optimizer):
             raise ValueError(f"Invalid beta parameter at index 0: {betas[0]}")
         if not 0.0 <= betas[1] < 1.0:
             raise ValueError(f"Invalid beta parameter at index 1: {betas[1]}")
-        defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, amsgrad=amsgrad, centered=centered)
+        defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, amsgrad=amsgrad, centered=centered, foreach=foreach)
         super().__init__(params, defaults)
 
     def step(self):
         """Performs a single optimization step."""
 
         for group in self.param_groups:
-            if group["amsgrad"] or group["centered"]:
+            if group["amsgrad"] or group["centered"] or not group["foreach"]:
                 self._step_group_per_param(group)
             else:
                 self._step_group_foreach(group)

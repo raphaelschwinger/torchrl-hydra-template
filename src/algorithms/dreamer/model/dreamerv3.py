@@ -4,10 +4,11 @@ from collections import OrderedDict
 import torch
 from tensordict import TensorDict
 from torch import nn
-from torch.amp import autocast
+from torch.amp import GradScaler, autocast
 from torch.optim.lr_scheduler import LambdaLR
 
 import src.algorithms.dreamer.networks as networks
+import src.algorithms.dreamer.perf_flags as perf_flags
 import src.algorithms.dreamer.rssm as rssm
 import src.algorithms.dreamer.tools as tools
 from src.components.optim import LaProp, clip_grad_agc_
@@ -26,6 +27,9 @@ class DreamerV3(nn.Module):
 
     def __init__(self, config, obs_space, act_space):
         super().__init__()
+        # Apply perf toggles before any submodule is constructed — static_pad
+        perf = perf_flags.configure(config.get("perf", None))
+        print(f"Perf flags: {perf}", flush=True)
         self.device = torch.device(config.device)
         self.act_entropy = float(config.act_entropy)
         self.kl_free = float(config.kl_free)
@@ -106,6 +110,15 @@ class DreamerV3(nn.Module):
             lr=config.lr,
             betas=(config.beta1, config.beta2),
             eps=config.eps,
+            foreach=perf_flags.flags.foreach_laprop,
+        )
+        # perf.bf16_autocast=False restores r2dreamer's original fp16-autocast
+        # + GradScaler scheme (fp16 needs loss scaling to avoid gradient
+        # underflow; bf16 shares f32's exponent range and never does, so the
+        # scaler is a no-op — enabled=False makes every scaler call an
+        # identity/passthrough — when the flag is True).
+        self._scaler = GradScaler(
+            device=self.device.type, enabled=not perf_flags.flags.bf16_autocast
         )
 
         def lr_lambda(step):
@@ -119,8 +132,10 @@ class DreamerV3(nn.Module):
         # All shapes are static, so cuDNN conv-algorithm autotuning is safe.
         # TF32 speeds up the float32 ops that autocast keeps out of bfloat16.
         if self.device.type == "cuda":
-            torch.backends.cudnn.benchmark = True
-            torch.set_float32_matmul_precision("high")
+            if perf_flags.flags.cudnn_benchmark:
+                torch.backends.cudnn.benchmark = True
+            if perf_flags.flags.tf32:
+                torch.set_float32_matmul_precision("high")
         if config.compile:
             # compile: true -> "reduce-overhead"; or pass a torch.compile mode
             # string directly (e.g. "max-autotune") for A/B testing.
@@ -291,8 +306,14 @@ class DreamerV3(nn.Module):
         p_data = self.preprocess(data)
         self._update_slow_target()
         torch.compiler.cudagraph_mark_step_begin()
-        with autocast(device_type=self.device.type, dtype=torch.bfloat16):
+        autocast_dtype = (
+            torch.bfloat16 if perf_flags.flags.bf16_autocast else torch.float16
+        )
+        with autocast(device_type=self.device.type, dtype=autocast_dtype):
             (stoch, deter), mets = self._cal_grad(p_data, initial)
+        # unscale_ before AGC so clipping sees real (not fp16-scaled) grad norms;
+        # a no-op when the scaler is disabled (perf.bf16_autocast=True).
+        self._scaler.unscale_(self._optimizer)
         self._post_grad_hook()
         if self._log_grads:
             old_params = [p.data.clone().detach() for p in self._named_params.values()]
@@ -300,10 +321,12 @@ class DreamerV3(nn.Module):
             mets["opt/grad_norm"] = tools.compute_global_norm(grads)
             mets["opt/grad_rms"] = tools.compute_rms(grads)
         self._agc(self._named_params.values())
-        self._optimizer.step()
+        self._scaler.step(self._optimizer)
+        self._scaler.update()
         self._scheduler.step()
         self._optimizer.zero_grad(set_to_none=True)
         mets["opt/lr"] = self._scheduler.get_last_lr()[0]
+        mets["opt/grad_scale"] = self._scaler.get_scale()
         if self._log_grads:
             updates = [
                 new - old
@@ -374,12 +397,20 @@ class DreamerV3(nn.Module):
         imag_reward = self._frozen_reward(imag_feat).mode()
         # (B*T, T_imag, 1)  probability of continuation
         imag_cont = self._frozen_cont(imag_feat).mean
-        # One trainable value forward serves both the targets (mode, detached)
-        # and the value loss (log_prob) below — the frozen copy shares weights,
-        # so a separate frozen forward would be identical work done twice.
+        # r2dreamer always computed a single trainable value forward per site
+        # and reused it for both log_prob terms in the value loss below (never
+        # called self.value twice there). perf.dedup_value only toggles the
+        # *target* value: True reuses imag_value_dist's mode — the frozen copy
+        # shares weights with the trainable one, so this is numerically
+        # identical to a separate frozen forward; False makes that separate
+        # forward, which is the one genuinely redundant call r2dreamer's
+        # original code had.
         imag_value_dist = self.value(imag_feat)
-        # (B*T, T_imag, 1)
-        imag_value = imag_value_dist.mode().detach()
+        if perf_flags.flags.dedup_value:
+            # (B*T, T_imag, 1)
+            imag_value = imag_value_dist.mode().detach()
+        else:
+            imag_value = self._frozen_value(imag_feat).mode()
         imag_slow_value = self._frozen_slow_value(imag_feat).mode()
         disc = 1 - 1 / self.horizon
         # (B*T, T_imag, 1)
@@ -430,9 +461,12 @@ class DreamerV3(nn.Module):
         reward = to_f32(data["next", "reward"])
         feat = self.rssm.get_feat(post_stoch, post_deter)
         boot = ret[:, 0].reshape(B, T, 1)
-        # Same weight-sharing argument as in the imagination block above.
+        # Same ground-truth trade-off as the imagination block above.
         rep_value_dist = self.value(feat)
-        value = rep_value_dist.mode().detach()
+        if perf_flags.flags.dedup_value:
+            value = rep_value_dist.mode().detach()
+        else:
+            value = self._frozen_value(feat).mode()
         slow_value = self._frozen_slow_value(feat).mode()
         ret = self._lambda_return(last, term, reward, value, boot, disc, self.lamb)
         ret_padded = torch.cat([ret, 0 * ret[:, -1:]], 1)
@@ -448,7 +482,7 @@ class DreamerV3(nn.Module):
         metrics.update(tools.tensorstats(slow_value, "slow_value_replay"))
 
         total_loss = sum(v * self._loss_scales[k] for k, v in losses.items())
-        total_loss.backward()
+        self._scaler.scale(total_loss).backward()
         metrics.update({f"loss/{name}": loss for name, loss in losses.items()})
         metrics["opt/loss"] = total_loss
         return (post_stoch, post_deter), metrics

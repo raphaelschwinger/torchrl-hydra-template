@@ -12,6 +12,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+import src.algorithms.dreamer.perf_flags as perf_flags
 import src.components.distributions as dists  #! R2Dreamer used bare `import distributions as dists`
 from src.algorithms.dreamer.tools import weight_init_  #!
 
@@ -79,7 +80,8 @@ class Conv2dSamePad(nn.Conv2d):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._static_same = (
-            all(s == 1 for s in self.stride)
+            perf_flags.flags.static_pad
+            and all(s == 1 for s in self.stride)
             and all(k % 2 == 1 for k in self.kernel_size)
             and all(d == 1 for d in self.dilation)
         )
