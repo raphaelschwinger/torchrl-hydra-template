@@ -49,3 +49,31 @@ def configure(cfg=None) -> PerfFlags:
         base = dataclasses.replace(base, **overrides)
     flags = base
     return flags
+
+
+def configure_env(root_dir: str) -> None:
+    """Set the process-wide env vars Dreamer's torch.compile path wants.
+
+    Must be called before the *first* CUDA call anywhere in the process —
+    ``PYTORCH_CUDA_ALLOC_CONF`` is parsed once, lazily, the first time the
+    CUDA allocator is touched, and re-setting it later is a silent no-op.
+    That first touch is ``seed_everything()``'s ``torch.cuda.manual_seed_all``
+    in ``src/train.py``, which runs before any algorithm/model is
+    constructed — so this cannot live in ``DreamerV3.__init__`` and must be
+    called from the entry point instead, ahead of ``seed_everything()``.
+
+    ``setdefault`` throughout: an explicit shell or devcontainer override
+    always wins over this default.
+
+    - ``TORCHINDUCTOR_CACHE_DIR``: persists compiled kernels (esp.
+      ``max-autotune``'s ~20-candidate-per-kernel search) across runs and
+      container restarts instead of the default ephemeral ``/tmp``.
+    - ``PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True``: lets CUDA memory
+      segments grow instead of requiring a new contiguous block, reducing
+      fragmentation-driven OOMs — the crash mode ``max-autotune``'s varied
+      per-candidate scratch-buffer sizes can trigger.
+    """
+    os.environ.setdefault(
+        "TORCHINDUCTOR_CACHE_DIR", str(Path(root_dir) / ".torchinductor_cache")
+    )
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")

@@ -33,6 +33,15 @@ def _train(cfg: DictConfig) -> dict[str, float]:
     from src.utils.instantiate import build_callbacks, build_loggers
     from src.utils.seeding import seed_everything
 
+    # Must run before seed_everything() (the first CUDA call in the process)
+    # — see perf_flags.configure_env's docstring for why this can't wait
+    # until the Dreamer model is constructed.
+    algo_target = str(cfg.algorithm.get("_target_", ""))
+    if algo_target.startswith("src.algorithms.dreamer."):
+        from src.algorithms.dreamer.perf_flags import configure_env
+
+        configure_env(cfg.paths.root_dir)
+
     seed_everything(int(cfg.trainer.seed))
 
     # Build components
