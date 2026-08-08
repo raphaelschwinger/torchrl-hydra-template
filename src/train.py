@@ -40,7 +40,7 @@ def _train(cfg: DictConfig) -> dict[str, float]:
     if algo_target.startswith("src.algorithms.dreamer."):
         from src.algorithms.dreamer.perf_flags import configure_env
 
-        configure_env(cfg.paths.root_dir)
+        configure_env()
 
     seed_everything(int(cfg.trainer.seed))
 

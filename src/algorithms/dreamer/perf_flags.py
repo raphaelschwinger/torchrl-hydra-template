@@ -51,7 +51,7 @@ def configure(cfg=None) -> PerfFlags:
     return flags
 
 
-def configure_env(root_dir: str) -> None:
+def configure_env() -> None:
     """Set the process-wide env vars Dreamer's torch.compile path wants.
 
     Must be called before the *first* CUDA call anywhere in the process —
@@ -62,8 +62,7 @@ def configure_env(root_dir: str) -> None:
     constructed — so this cannot live in ``DreamerV3.__init__`` and must be
     called from the entry point instead, ahead of ``seed_everything()``.
 
-    ``setdefault`` throughout: an explicit shell or devcontainer override
-    always wins over this default.
+    ``setdefault``: an explicit shell or devcontainer override always wins over this default.
 
     - ``TORCHINDUCTOR_CACHE_DIR``: persists compiled kernels (esp.
       ``max-autotune``'s ~20-candidate-per-kernel search) across runs and
@@ -72,8 +71,15 @@ def configure_env(root_dir: str) -> None:
       segments grow instead of requiring a new contiguous block, reducing
       fragmentation-driven OOMs — the crash mode ``max-autotune``'s varied
       per-candidate scratch-buffer sizes can trigger.
+
+          Deliberately does not touch ``TORCHINDUCTOR_CACHE_DIR`` — left at
+    torchrl's own default (``/tmp/torchinductor_<user>``, on this box's local
+    overlay filesystem, not the NFS-mounted project dir). It already persists
+    fine across ordinary runs within one container lifetime; a `setdefault`
+    here would also lose the race against torchrl's own import-time default
+    anyway, since importing this function pulls in the full
+    ``src.algorithms.dreamer`` package (-> ``dreamer.py`` -> every model file
+    -> ``torchrl``) before this function's body ever runs.
     """
-    os.environ.setdefault(
-        "TORCHINDUCTOR_CACHE_DIR", str(Path(root_dir) / ".torchinductor_cache")
-    )
+
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
