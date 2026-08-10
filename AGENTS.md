@@ -671,9 +671,9 @@ python src/train.py experiment=tdmpc2/dmc environment.task=walker-walk
 
 python scripts/update_algo_results.py              # refresh algo README benchmark tables (W&B tag: template)
 
-# Cross-algorithm sweep: 6 experiments x 3 seeds, queue-balanced over GPUs.
+# Cross-algorithm sweep: 7 experiments x 3 seeds, queue-balanced over GPUs.
 # Resumable (markers in logs/benchmarks/done/); tags runs `template`.
-./scripts/run_benchmarks.sh --dry-run              # print the 18 commands
+./scripts/run_benchmarks.sh --dry-run              # print the 21 commands
 ./scripts/run_benchmarks.sh --smoke                # tiny budgets; validates every spec
 ./scripts/run_benchmarks.sh --gpus 2,3             # the real sweep
 

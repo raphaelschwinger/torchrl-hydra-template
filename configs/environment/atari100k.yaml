@@ -29,9 +29,10 @@ gymnasium_wrappers:
     noop_max: 30
   - _target_: src.environments.atari_wrappers.EpisodicLifeEnv
 
-# Gym-level random no-ops, 84x84 grayscale frames stacked 4 deep, and training
-# rewards clipped to {-1, 0, 1} (SignTransform, placed after RewardSum so
-# logged episode returns stay unclipped).
+# Gym-level random no-ops and 84x84 grayscale frames stacked 4 deep. Training
+# rewards are left unclipped (no SignTransform) — comparing good and bad
+# Rainbow/DER runs found no consistent benefit from reward clipping here, so
+# it was dropped; see src/algorithms/rainbow/README.md.
 transforms:
   - _target_: torchrl.envs.ToTensorImage
   - _target_: torchrl.envs.GrayScale
@@ -42,7 +43,5 @@ transforms:
     N: 4
     dim: -3
   - _target_: torchrl.envs.RewardSum
-  - _target_: torchrl.envs.SignTransform
-    in_keys: [reward]
   - _target_: torchrl.envs.StepCounter
     max_steps: 27000

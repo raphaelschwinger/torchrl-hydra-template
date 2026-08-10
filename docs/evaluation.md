@@ -113,12 +113,12 @@ before it shows up in the curve.
 
 ### Multi-GPU benchmark sweeps
 
-`scripts/run_benchmarks.sh` runs a fixed cross-algorithm sweep — PPO, BBF and
-DreamerV3 on Atari-100k Jamesbond, plus PPO, TD-MPC2 and DreamerV3 on DMC
-cheetah-run — at three seeds each, load-balanced across GPUs.
+`scripts/run_benchmarks.sh` runs a fixed cross-algorithm sweep — PPO, Rainbow
+(DER), BBF and DreamerV3 on Atari-100k Jamesbond, plus PPO, TD-MPC2 and
+DreamerV3 on DMC cheetah-run — at three seeds each, load-balanced across GPUs.
 
 ```shell
-./scripts/run_benchmarks.sh --dry-run           # print the 18 commands
+./scripts/run_benchmarks.sh --dry-run           # print the 21 commands
 ./scripts/run_benchmarks.sh --smoke             # tiny budgets; validates every spec
 ./scripts/run_benchmarks.sh --gpus 2,3          # the real sweep
 ./scripts/run_benchmarks.sh --only bbf,tdmpc2   # subset by job name
