@@ -122,7 +122,7 @@ DreamerV3 on DMC cheetah-run — at three seeds each, load-balanced across GPUs.
 ./scripts/run_benchmarks.sh --smoke             # tiny budgets; validates every spec
 ./scripts/run_benchmarks.sh --gpus 2,3          # the real sweep
 ./scripts/run_benchmarks.sh --only bbf,tdmpc2   # subset by job name
-./scripts/run_benchmarks.sh --tag template-v2   # own W&B tag for this sweep
+./scripts/run_benchmarks.sh --tag my-sweep      # own W&B tag for this sweep
 ```
 
 Use `--tag` whenever the evaluation protocol has changed since the last sweep.
@@ -154,7 +154,7 @@ env).
 ```shell
 ./scripts/make_figures.sh                                    # every group, W&B tag `template`
 ./scripts/make_figures.sh --group atari100k                  # one comparison group
-./scripts/make_figures.sh --tag template-v2 --full --publish # regenerate docs/figures/
+./scripts/make_figures.sh --full --publish                   # regenerate docs/figures/
 ```
 
 `--full` matters: by default the script runs with openrlbenchmark's own
@@ -182,35 +182,38 @@ sweep's runs together (see [Multi-GPU benchmark sweeps](#multi-gpu-benchmark-swe
 
 ## Benchmark results
 
-Three seeds per algorithm, produced by `./scripts/run_benchmarks.sh --gpus 2,3
---tag template-v2` and plotted with `./scripts/make_figures.sh --tag
-template-v2 --full --publish`. Shaded bands are ±1 std over seeds; every
+Three seeds per algorithm (five for DER), produced by `./scripts/run_benchmarks.sh
+--gpus 2,3` and plotted with `./scripts/make_figures.sh --full --publish` (both
+default to the `template` W&B tag). Shaded bands are ±1 std over seeds; every
 number is the mean of the last 100 logged evaluation episodes.
 
 **Read these as a template smoke test, not as a benchmark claim.** Each suite
 here is a *single* task, so rliable's median / IQM / mean necessarily coincide
 (visible below) and the performance profile is close to degenerate — those
-panels only start carrying information across many tasks. Three seeds on one
-task is also far too few to separate implementations that land close together.
+panels only start carrying information across many tasks. A handful of seeds
+on one task is also far too few to separate implementations that land close
+together.
 
 ### Atari-100k — Jamesbond
 
-|              | DreamerV3      | BBF             | PPO           |
-|:-------------|:---------------|:----------------|:--------------|
-| Jamesbond-v5 | 385.33 ± 38.35 | 825.83 ± 309.25 | 25.67 ± 19.15 |
+|              | DreamerV3      | BBF             | DER            | PPO           |
+|:-------------|:---------------|:----------------|:---------------|:--------------|
+| Jamesbond-v5 | 385.33 ± 38.35 | 825.83 ± 309.25 | 240.80 ± 15.41 | 25.67 ± 19.15 |
 
 ![Atari-100k Jamesbond return](figures/atari100k.png)
 
 100k agent steps (400k game frames), 10-episode evaluations every 10k steps.
 The ordering is the expected one — BBF, the sample-efficiency specialist,
-clears DreamerV3, while PPO sits at random play (29.0 on this game) at a budget
-it was never designed for. BBF's ±309 spread across three seeds is not noise in
-the plot but the task: the official RR2 release reports mean ≈ 1125 over 14
-seeds with min 573 and max 1490 (see
+clears DreamerV3, DER sits below both (Rainbow's extensions minus BBF's
+self-supervised/reset machinery), and PPO sits at random play (29.0 on this
+game) at a budget it was never designed for. BBF's ±309 spread across three
+seeds is not noise in the plot but the task: the official RR2 release reports
+mean ≈ 1125 over 14 seeds with min 573 and max 1490 (see
 [BBF's README](../src/algorithms/bbf/README.md)), so our three seeds
 (1251 / 702 / 524) sit inside that spread with the mean pulled low. The spike
 near 30k is the same effect at a 10-episode measurement — which is why the
-protocol also takes 100 episodes at the end.
+protocol also takes 100 episodes at the end. DER's five seeds (243 / 232 / 221
+/ 267.5 / 240.5) are the tightest of the four, ±15.41.
 
 ![Atari-100k aggregate metrics](figures/atari100k_aggregate.png)
 ![Atari-100k performance profile](figures/atari100k_performance_profile.png)
@@ -223,7 +226,7 @@ random 29.0, human 302.8), so 1.0 is human level.
 ![Atari-100k return vs walltime](figures/atari100k-time.png)
 
 The same curves against wall-clock: at this budget BBF costs ~108 minutes per
-seed on one GPU and DreamerV3 ~95, against PPO's ~5.
+seed on one GPU, DER ~158, and DreamerV3 ~95, against PPO's ~5.
 
 ### DMC Proprio — cheetah-run
 

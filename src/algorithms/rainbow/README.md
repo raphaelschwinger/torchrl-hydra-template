@@ -177,4 +177,9 @@ below); evaluation uses true game-over episodes and unclipped rewards too.
 
 | Run | Environment | Config | Seed | Frames | Eval return | Notes |
 |-----|-------------|--------|------|--------|-------------|-------|
-| — | — | — | — | — | — | No finished runs tagged ``template`` yet — see [W&B table](https://wandb.ai/LatentLab/torchrl-hydra-template/table) |
+| [rainbow_Jamesbond_atari100k_2026-08-10_09-28-47](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/nvpamdxd) | ALE/Jamesbond-v5 | `experiment=rainbow/atari100k` | 1 | 100,000 | 243.0 | — |
+| [rainbow_Jamesbond_atari100k_2026-08-10_09-29-13](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/bhg7sd88) | ALE/Jamesbond-v5 | `experiment=rainbow/atari100k` | 2 | 100,000 | 232.0 | — |
+| [rainbow_Jamesbond_atari100k_2026-08-10_12-31-02](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/p142tzbj) | ALE/Jamesbond-v5 | `experiment=rainbow/atari100k` | 3 | 100,000 | 221.0 | — |
+| [rainbow_Jamesbond_atari100k_2026-08-10_12-32-07](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/6zff7y2o) | ALE/Jamesbond-v5 | `experiment=rainbow/atari100k` | 4 | 100,000 | 267.5 | — |
+| [rainbow_Jamesbond_atari100k_2026-08-10_15-23-47](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/yk5wqpew) | ALE/Jamesbond-v5 | `experiment=rainbow/atari100k` | 5 | 100,000 | 240.5 | — |
+| **Mean ± Std** | ALE/Jamesbond-v5 | `experiment=rainbow/atari100k` | — | — | **240.8 ± 15.4** | n=5 seeds |

@@ -15,7 +15,7 @@
 #   ./scripts/run_benchmarks.sh                     # the real sweep on GPUs 2,3
 #   ./scripts/run_benchmarks.sh --only bbf,tdmpc2   # subset by job name
 #   ./scripts/run_benchmarks.sh --gpus 0,1,2,3      # more workers
-#   ./scripts/run_benchmarks.sh --tag template-v2   # own W&B tag for this sweep
+#   ./scripts/run_benchmarks.sh --tag my-sweep      # own W&B tag for this sweep
 #
 set -uo pipefail
 # Overrides are deliberately word-split into argv, but they contain bracket

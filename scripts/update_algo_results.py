@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import statistics
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -82,6 +83,7 @@ class ResultRow:
     seed: int | None
     frames: int | None
     eval_return: str
+    eval_return_value: float | None
     notes: str
 
 
@@ -444,6 +446,7 @@ def parse_run(run, registry: list[ExperimentSpec]) -> ResultRow | None:
         seed=trainer_cfg.get("seed"),
         frames=trainer_cfg.get("total_frames"),
         eval_return=format_return(eval_return),
+        eval_return_value=eval_return,
         notes=notes or "—",
     )
 
@@ -454,6 +457,20 @@ def row_to_markdown(row: ResultRow) -> str:
     return (
         f"| {run_cell} | {row.environment} | `{row.config}` | {seed} | "
         f"{format_int(row.frames)} | {row.eval_return} | {row.notes} |"
+    )
+
+
+def summary_row_markdown(environment: str, config: str, values: list[float]) -> str:
+    """A ``**Mean ± Std**`` row summarising one (environment, config) group.
+
+    Population std (``ddof=0``), matching the convention used for the
+    cross-algorithm figures in ``docs/evaluation.md`` / ``make_figures.sh``.
+    """
+    mean = statistics.fmean(values)
+    std = statistics.pstdev(values)
+    return (
+        f"| **Mean ± Std** | {environment} | `{config}` | — | — | "
+        f"**{format_return(mean)} ± {format_return(std)}** | n={len(values)} seeds |"
     )
 
 
@@ -468,7 +485,27 @@ def build_table(rows: list[ResultRow]) -> str:
         )
 
     sorted_rows = sorted(rows, key=lambda r: (r.environment, r.config, r.run_name))
-    body = "\n".join(row_to_markdown(r) for r in sorted_rows)
+
+    lines: list[str] = []
+    group_key: tuple[str, str] | None = None
+    group_values: list[float] = []
+
+    def flush_summary() -> None:
+        if group_key is not None and len(group_values) >= 2:
+            lines.append(summary_row_markdown(*group_key, group_values))
+
+    for row in sorted_rows:
+        key = (row.environment, row.config)
+        if key != group_key:
+            flush_summary()
+            group_key = key
+            group_values = []
+        lines.append(row_to_markdown(row))
+        if row.eval_return_value is not None:
+            group_values.append(row.eval_return_value)
+    flush_summary()
+
+    body = "\n".join(lines)
     return f"{TABLE_HEADER}\n{TABLE_SEPARATOR}\n{body}"
 
 

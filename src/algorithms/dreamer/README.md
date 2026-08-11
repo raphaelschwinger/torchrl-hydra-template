@@ -213,9 +213,11 @@ runs.
 
 | Run | Environment | Config | Seed | Frames | Eval return | Notes |
 |-----|-------------|--------|------|--------|-------------|-------|
-| [dreamer_Jamesbond_atari100k_200m_2026-08-03_12-04-31](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/wwt2hl3y) | ALE/Jamesbond-v5 | `experiment=dreamer/atari100k environment.task=Jamesbond` | 1 | 110,000 | 222.0 | — |
-| [dreamer_Jamesbond_atari100k_200m_2026-08-03_13-40-08](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/9o2v5b67) | ALE/Jamesbond-v5 | `experiment=dreamer/atari100k environment.task=Jamesbond` | 2 | 110,000 | 195.0 | — |
-| [dreamer_Jamesbond_atari100k_200m_2026-08-03_13-41-35](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/omlhkgde) | ALE/Jamesbond-v5 | `experiment=dreamer/atari100k environment.task=Jamesbond` | 3 | 110,000 | 168.5 | — |
+| [dreamer_Jamesbond_atari100k_200m_2026-08-03_12-04-31](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/wwt2hl3y) | ALE/Jamesbond-v5 | `experiment=dreamer/atari100k` | 1 | 110,000 | 222.0 | — |
+| [dreamer_Jamesbond_atari100k_200m_2026-08-03_13-40-08](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/9o2v5b67) | ALE/Jamesbond-v5 | `experiment=dreamer/atari100k` | 2 | 110,000 | 195.0 | — |
+| [dreamer_Jamesbond_atari100k_200m_2026-08-03_13-41-35](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/omlhkgde) | ALE/Jamesbond-v5 | `experiment=dreamer/atari100k` | 3 | 110,000 | 168.5 | — |
+| **Mean ± Std** | ALE/Jamesbond-v5 | `experiment=dreamer/atari100k` | — | — | **195.2 ± 21.8** | n=3 seeds |
 | [dreamer_cheetah-run_2026-08-03_20-44-09](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/7a2tmns6) | cheetah-run | `experiment=dreamer/dmc` | 1 | 1,000,000 | 687.0 | — |
 | [dreamer_cheetah-run_2026-08-03_23-05-17](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/qw6dmfpk) | cheetah-run | `experiment=dreamer/dmc` | 2 | 1,000,000 | 798.6 | — |
 | [dreamer_cheetah-run_2026-08-03_23-49-29](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/o556nwid) | cheetah-run | `experiment=dreamer/dmc` | 3 | 1,000,000 | 841.2 | — |
+| **Mean ± Std** | cheetah-run | `experiment=dreamer/dmc` | — | — | **775.6 ± 65.0** | n=3 seeds |

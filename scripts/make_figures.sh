@@ -11,9 +11,9 @@
 #
 #   ./scripts/make_figures.sh                    # every group, tag `template`
 #   ./scripts/make_figures.sh --group atari100k  # one group
-#   ./scripts/make_figures.sh --tag template-v2  # a different W&B tag
+#   ./scripts/make_figures.sh --tag my-sweep     # a different W&B tag
 #   ./scripts/make_figures.sh --metric charts/episodic_return   # override metric
-#   ./scripts/make_figures.sh --tag template-v2 --publish       # + copy into docs/figures/
+#   ./scripts/make_figures.sh --tag my-sweep --publish   # + copy into docs/figures/
 #   ./scripts/make_figures.sh --full --publish   # publish-quality bootstrap CIs
 #
 # rliable's Stratified Bootstrap CIs default (in openrlbenchmark) to only 10
@@ -95,6 +95,17 @@ if [[ ! -x "$VENV/bin/python" ]]; then
   uv pip install --python "$VENV/bin/python" --quiet openrlbenchmark || exit 1
 fi
 
+# rliable's `plot_interval_estimates` sizes the aggregate-metrics figure as
+# `row_height=0.37in * num_algorithms`, with no CLI knob to raise it. That is
+# tight enough at 4+ algorithms (our atari100k group: DreamerV3, BBF, DER, PPO)
+# that the y-axis algorithm labels overlap. Patch the installed copy once,
+# rather than fork rlops.py, since this venv is disposable and rebuilt from
+# scratch by the block above whenever it is missing.
+RLOPS="$VENV/lib/python3.10/site-packages/openrlbenchmark/rlops.py"
+if [[ -f "$RLOPS" ]] && ! grep -q "row_height=" "$RLOPS"; then
+  sed -i '/^                xlabel="",$/i\                row_height=0.6,' "$RLOPS"
+fi
+
 mkdir -p "$OUT_DIR"
 
 # -------------------------------------------------------------------- groups
@@ -118,7 +129,7 @@ mkdir -p "$OUT_DIR"
 # NOT `GROUPS`: bash reserves that name for the caller's group IDs and silently
 # ignores the assignment, so every field would parse as a gid.
 FIG_GROUPS=(
-  "atari100k|Jamesbond-v5|atari|charts/eval_episodic_return|dreamer:DreamerV3,bbf:BBF,ppo:PPO"
+  "atari100k|Jamesbond-v5|atari|charts/eval_episodic_return|dreamer:DreamerV3,bbf:BBF,der:DER,ppo:PPO"
   "dmc|cheetah-run|maxmin|charts/eval_episodic_return|dreamer:DreamerV3,tdmpc2:TD-MPC2,ppo:PPO"
 )
 

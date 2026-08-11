@@ -155,6 +155,7 @@ consume directly, so algorithms are comparable on one axis. See
 [docs/evaluation.md](docs/evaluation.md) for the full protocol, the logging
 contract, and benchmark results.
 
+![Atari-100k aggregate metrics](docs/figures/atari100k_aggregate.png)
 ![DMC cheetah-run return](docs/figures/dmc.png)
 
 ## Documentation

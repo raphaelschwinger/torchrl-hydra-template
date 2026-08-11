@@ -684,7 +684,7 @@ python scripts/update_algo_results.py              # refresh algo README benchma
 # copies PNGs + tables into docs/figures/, which docs/evaluation.md embeds.
 ./scripts/make_figures.sh                          # every group, tag `template`
 ./scripts/make_figures.sh --group atari100k        # one comparison group
-./scripts/make_figures.sh --tag template-v2 --full --publish   # regenerate docs/evaluation.md figures
+./scripts/make_figures.sh --full --publish         # regenerate docs/evaluation.md figures
 pytest tests/test_smoke.py -v
 
 # Evaluate an official TD-MPC2 checkpoint (see src/algorithms/tdmpc2/README.md):
