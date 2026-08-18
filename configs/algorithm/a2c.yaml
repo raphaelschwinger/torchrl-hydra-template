@@ -3,7 +3,7 @@ _target_: src.algorithms.a2c.A2CAlgorithm
 # Callable factories (override via nested configs; requires ``instantiate(cfg.algorithm)``).
 actor_network:
   _partial_: true
-  _target_: src.networks.make_mlp_a2c_actor
+  _target_: src.components.networks.make_mlp_a2c_actor
   num_cells: [64, 64]
   # `torch.nn.Tanh` via `_target_` would instantiate a module; MLP needs the class.
   activation_class:
@@ -12,7 +12,7 @@ actor_network:
 
 value_network:
   _partial_: true
-  _target_: src.networks.make_mlp_a2c_value
+  _target_: src.components.networks.make_mlp_a2c_value
   num_cells: [64, 64]
   activation_class:
     _target_: hydra.utils.get_class

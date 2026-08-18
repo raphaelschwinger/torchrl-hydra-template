@@ -34,7 +34,7 @@ from torchrl.objectives import A2CLoss
 from torchrl.objectives.value import GAE
 
 from src.algorithms.base import BaseAlgorithm, CollectorConfig, TrainingState
-from src.networks import make_mlp_a2c_actor, make_mlp_a2c_value
+from src.components.networks import make_mlp_a2c_actor, make_mlp_a2c_value
 
 
 class A2CAlgorithm(BaseAlgorithm):

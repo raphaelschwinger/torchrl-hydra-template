@@ -1,0 +1,9 @@
+defaults:
+  - default
+  - _self_
+
+accelerator: gpu
+# Which GPU to use is machine-specific — override on the CLI rather than
+# committing an index into an experiment config:
+#   python src/train.py experiment=dqn/ale trainer.devices=[3]
+devices: [0]

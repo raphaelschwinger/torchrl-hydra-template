@@ -1,0 +1,45 @@
+# No evaluation *rollouts*: the training stream is the only measurement.
+#
+# This is also the base schema every other evaluation config inherits from, so
+# any new key belongs here first. Use it directly for smoke tests and for
+# algorithms that report training-stream returns by construction (DreamerV3),
+# where separate rollouts would be pure overhead.
+#
+# The evaluation component owns the *measurement* protocol: which env stack the
+# policy is measured on, how often, for how many episodes, with which policy,
+# and which stream is canonical. Nothing here may shift the learning curve.
+defaults:
+  - /environment@eval_environment: null
+
+# Periodic evaluation during training, in agent steps. 0 disables it.
+every_n_steps: 0
+# Episodes per periodic evaluation point.
+num_episodes: 10
+# Episodes for the post-training evaluation stage (gated by top-level `eval:`).
+# 0 disables it.
+final_num_episodes: 0
+
+# Which policy evaluation uses: "eval" -> algorithm.get_policy(),
+# "explore" -> algorithm.get_explore_policy().
+policy: eval
+
+# Which stream feeds the canonical `charts/episodic_return`:
+#   "train" -> completed training episodes (CleanRL / openrlbenchmark convention)
+#   "eval"  -> evaluation rollouts
+# Use "eval" only where the training stream is not a true score (see
+# evaluation/atari100k.yaml).
+canonical_source: train
+
+# Base seed for the evaluation env. The nth evaluation point seeds with
+# `seed + n`, so eval points are reproducible without being identical.
+seed: 12345
+
+# End-of-run summary: mean/std of the canonical return over the last
+# `summary_window` episodes, written to the logger summary as
+# `eval/final_return_mean` / `eval/final_return_std`. Matches openrlbenchmark's
+# own reporting rule (mean of the last 100 logged points).
+summary_window: 100
+# Ignore canonical episodes completed after this agent step when computing the
+# summary. null = use the whole run. Set it when the run deliberately trains
+# past the benchmark budget (see experiment/dreamer/atari100k.yaml).
+summary_max_step: null

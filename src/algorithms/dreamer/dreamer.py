@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
-from collections import deque
 from typing import Callable
 from omegaconf import DictConfig, open_dict
 
@@ -22,7 +21,7 @@ from src.algorithms.dreamer.model import (
 class DreamerPolicy(nn.Module):
     """Wraps the Dreamer model to manage the RSSM hidden states across time steps."""
 
-    def __init__(self, model: Dreamer, explore: bool = True):
+    def __init__(self, model: nn.Module, explore: bool = True):
         super().__init__()
         self.model = model
         self.explore = explore
@@ -89,7 +88,7 @@ def _patch_devices(cfg: DictConfig, device_str: str) -> None:
 
 
 class DreamerAlgorithm(BaseAlgorithm):
-    """Stateful algorithm wrapper for DreamerV3/EfficientDreamer."""
+    """Stateful algorithm wrapper for DreamerV3 and its variants (R2Dreamer, DreamerPro)."""
 
     def __init__(
         self,
@@ -98,9 +97,9 @@ class DreamerAlgorithm(BaseAlgorithm):
         device: torch.device | None = None,
         train_ratio: float = 128.0,
         action_repeat: int = 4,
+        world_model_video_log_every: int = 50_000,
         agent_video_log_every: int = 50_000,
         agent_video_max_steps: int = 200,
-        benchmark_frames: int | None = 400_000,
     ) -> None:
         # Resolve model class from dreamer_config._target_
         target = dreamer_config.get("_target_", None)
@@ -110,9 +109,9 @@ class DreamerAlgorithm(BaseAlgorithm):
         self.buffer_config = buffer_config
         self.train_ratio = train_ratio
         self.action_repeat = action_repeat
+        self.world_model_video_log_every = world_model_video_log_every
         self.agent_video_log_every = agent_video_log_every
         self.agent_video_max_steps = agent_video_max_steps
-        self.benchmark_frames = benchmark_frames
         self.batch_length = buffer_config.batch_length
         self.batch_size = buffer_config.batch_size
 
@@ -123,18 +122,12 @@ class DreamerAlgorithm(BaseAlgorithm):
         self._total_updates = 0
         self._last_video_frame = 0
         self._last_agent_video_frame = 0
-        self.video_log_every = 50_000  # log world model video every N frames
         self._metrics_accum: dict[str, list[float]] = {}
-        self._ep_scores: list[tuple[float, int]] = []   # (score, frame_at_done) — cleared each log window
-        self._ep_lengths: list[tuple[int, int]] = []   # (length, frame_at_done) — cleared each log window
-        self._all_ep_scores: list[tuple[int, float]] = []  # (frame, score) — persistent for last-10pct
-        self._recent_scores: deque = deque(maxlen=10)       # rolling last-10-episode mean
+        # Set in setup(): the world-model video reconstructs an image, so it only
+        # exists when the decoder actually has a CNN head (pixel observations).
+        self._world_model_video_enabled = False
+        self._video_axis_declared = False
         self._make_env: Callable[[], EnvBase] | None = None
-
-    @property
-    def log_step(self) -> int:
-        """Logical frame count (collector steps × action_repeat) for the WandB x-axis."""
-        return self._collected_frames
 
     def setup(self, make_env: Callable[[], EnvBase]) -> None:
         self._make_env = make_env
@@ -146,16 +139,6 @@ class DreamerAlgorithm(BaseAlgorithm):
         _patch_devices(self.dreamer_config, device_str)
         _patch_devices(self.buffer_config, device_str)
 
-        # Give video metrics their own x-axis (video/frame = game frames) so
-        # that video wandb.log calls don't advance the global step and conflict
-        # with deferred per-episode logging at historical frame positions.
-        try:
-            import wandb
-            if wandb.run is not None:
-                wandb.define_metric("video/*", step_metric="video/frame")
-        except Exception:
-            pass
-
         # 1. Instantiate the model (class selected via dreamer_config._target_)
         self.model = self._model_cls(self.dreamer_config, obs_space, act_space).to(
             self.device
@@ -165,11 +148,20 @@ class DreamerAlgorithm(BaseAlgorithm):
         self._explore_policy = DreamerPolicy(self.model, explore=True).to(self.device)
         self._eval_policy = DreamerPolicy(self.model, explore=False).to(self.device)
 
+        # `decoder` exists whenever loss_scales.recon > 0, on proprio stacks too —
+        # what decides whether a video can be rendered is the decoder having a CNN
+        # head. On DMC Proprio the key regexes select `observation` and match no
+        # image key, so `cnn_shapes` is empty and there is nothing to reconstruct.
+        decoder = getattr(self.model, "decoder", None)
+        self._world_model_video_enabled = bool(
+            decoder is not None and "image" in getattr(decoder, "cnn_shapes", {})
+        )
+
         # 3. Create a Sequence-Aware Replay Buffer
         self.replay_buffer = Buffer(self.buffer_config)
 
     def step(self, td: TensorDict) -> dict[str, float]:
-        """Receives a single frame from the StatefulTrainer and conditionally updates."""
+        """Receives a single collector batch from the trainer and conditionally updates."""
 
         # 1. Append directly to the sequence buffer.
         self.replay_buffer.add_transition(td)
@@ -178,24 +170,7 @@ class DreamerAlgorithm(BaseAlgorithm):
         transitions_added = int(td.batch_size[0]) if len(td.batch_size) > 0 else 1
         self._collected_frames += transitions_added * self.action_repeat
 
-        # 3. Track episode completions — store (value, frame) so each episode
-        # can be logged at its actual x-axis position rather than averaged.
-        done = td.get(("next", "done"), default=None)
-        if done is not None and done.bool().any():
-            mask = done.bool().squeeze(-1) if done.dim() > 1 else done.bool()
-            scores = td.get(("next", "episode_reward"), default=None)
-            lengths = td.get(("next", "step_count"), default=None)
-            for idx in mask.nonzero(as_tuple=True)[0]:
-                score = scores[idx].item() if scores is not None else None
-                length = lengths[idx].item() if lengths is not None else None
-                if score is not None:
-                    self._ep_scores.append((score, self._collected_frames))
-                    self._all_ep_scores.append((self._collected_frames, score))
-                    self._recent_scores.append(score)
-                if length is not None:
-                    self._ep_lengths.append((length, self._collected_frames))
-
-        # 4. The Minimum Viability Constraint
+        # 3. The Minimum Viability Constraint
         min_required_frames = (
             self.batch_length + 1
         ) * self.action_repeat  # At least enough frames to sample
@@ -203,26 +178,24 @@ class DreamerAlgorithm(BaseAlgorithm):
             self._next_update_target = self._collected_frames + self._frames_per_update
             return {}
 
-        # 5. Proportional update count — fires exactly once per step in normal
+        # 4. Proportional update count — fires exactly once per step in normal
         # operation (frames_per_batch=1), but catches up if frames_per_batch > 1.
         update_num = 0
         while self._collected_frames >= self._next_update_target:
             update_num += 1
             self._next_update_target += self._frames_per_update
 
-        # 6. Execute Backpropagation Through Time
+        # 5. Execute Backpropagation Through Time
         for _ in range(update_num):
             data, index, initial = self.replay_buffer.sample()
             (stoch, deter), _metrics = self.model.update(data, initial)
             self.replay_buffer.update(index, stoch, deter)
+            # The model reports `loss/dyn`, `opt/grad_norm`, ...; every algorithm
+            # in the template logs under a single `train/` family, so flatten the
+            # model's own namespaces into it.
             for k, v in _metrics.items():
                 val = v.item() if isinstance(v, torch.Tensor) else float(v)
-                if k.startswith("loss/"):
-                    key = f"losses/{k[5:]}"
-                elif k.startswith("opt/"):
-                    key = k
-                else:
-                    key = f"train/{k}"
+                key = f"train/{k.replace('/', '_')}"
                 self._metrics_accum.setdefault(key, []).append(val)
 
         if update_num > 0:
@@ -230,10 +203,18 @@ class DreamerAlgorithm(BaseAlgorithm):
 
             import wandb
 
+            # Videos keep their own x-axis: they are logged from here rather
+            # than through the trainer, so they carry no `global_step`. Declared
+            # lazily because wandb.init() happens after algorithm setup().
+            if wandb.run is not None and not self._video_axis_declared:
+                wandb.define_metric("video/*", step_metric="video/frame")
+                self._video_axis_declared = True
+
             if (
-                hasattr(self.model, "decoder")
+                self._world_model_video_enabled
+                and self.world_model_video_log_every > 0
                 and self._collected_frames - self._last_video_frame
-                >= self.video_log_every
+                >= self.world_model_video_log_every
             ):
                 self._last_video_frame = self._collected_frames
                 if wandb.run is not None:
@@ -243,7 +224,8 @@ class DreamerAlgorithm(BaseAlgorithm):
                     })
 
             if (
-                self._collected_frames - self._last_agent_video_frame
+                self.agent_video_log_every > 0
+                and self._collected_frames - self._last_agent_video_frame
                 >= self.agent_video_log_every
             ):
                 self._last_agent_video_frame = self._collected_frames
@@ -260,57 +242,21 @@ class DreamerAlgorithm(BaseAlgorithm):
     def pop_train_metrics(self) -> dict[str, float]:
         """Return mean metrics accumulated since the last call, then reset.
 
-        Called by StepTrainer at log boundaries. Training losses are averaged
-        over the window. Episodes are logged individually to W&B at the frame
-        step when they actually completed, so each episode is a separate point.
+        Called by StepTrainer at log boundaries and *merged* into the trainer's
+        own row — it supplements the trainer's episode accounting rather than
+        replacing it. Training losses are averaged over the window.
+
+        The end-of-run headline number is no longer computed here: the trainer's
+        ``summary()`` averages the canonical episodic return over the last
+        ``evaluation.summary_window`` episodes, with ``summary_max_step``
+        pinning the cutoff to the benchmark budget (Atari-100k: 100k agent
+        steps) even though DreamerV3 trains 10% past it.
         """
         out: dict[str, float] = {}
         if self._metrics_accum:
             out = {k: sum(v) / len(v) for k, v in self._metrics_accum.items()}
             self._metrics_accum.clear()
-        out["opt/updates"] = self._total_updates
-        if self._recent_scores:
-            out["episode/score_mean_last10ep"] = sum(self._recent_scores) / len(self._recent_scores)
-        if self._ep_scores:
-            import wandb
-
-            if wandb.run is not None:
-                for (score, frame), (length, _) in zip(
-                    self._ep_scores, self._ep_lengths
-                ):
-                    wandb.log(
-                        {"episode/score": score, "episode/length": length}, step=frame
-                    )
-            self._ep_scores.clear()
-            self._ep_lengths.clear()
-        return out
-
-    def finalize_metrics(self) -> dict[str, float]:
-        """End-of-run summary metrics mirroring DreamerCDP's eval block.
-
-        ``eval/score_*`` are pinned to the benchmark budget
-        (``benchmark_frames``, Atari100k: 400k game frames = 100k agent steps)
-        so they stay paper-comparable even when training runs past the budget,
-        as the official DreamerV3 code does (``run.steps: 1.1e5``):
-        ``eval/score_last`` is the last episode completing within the budget and
-        ``eval/score_mean_last10pct`` averages episodes in its final 10 %.
-        Episodes beyond the budget still appear on the ``episode/score`` curve.
-        """
-        if not self._all_ep_scores:
-            return {}
-        out: dict[str, float] = {}
-        run_end = max(f for f, _ in self._all_ep_scores)
-        cutoff = min(self.benchmark_frames or run_end, run_end)
-        eps = [(f, sc) for f, sc in self._all_ep_scores if f <= cutoff]
-        if eps:
-            out["eval/score_last"] = eps[-1][1]
-            last10pct = [sc for f, sc in eps if f >= cutoff * 0.9]
-            if last10pct:
-                out["eval/score_mean_last10pct"] = sum(last10pct) / len(last10pct)
-                out["eval/score_n_last10pct"] = float(len(last10pct))
-        import wandb
-        if wandb.run is not None:
-            wandb.log(out, step=self._collected_frames)
+        out["train/updates"] = self._total_updates
         return out
 
     @torch.no_grad()
@@ -360,10 +306,12 @@ class DreamerAlgorithm(BaseAlgorithm):
         return wandb.Video(video, fps=20, format="mp4")
 
     def get_policy(self) -> TensorDictModule:
-        # Argmax (dist.mode) policy. Not used anywhere in training — collection,
-        # scores and videos all run the sampled explore policy, matching official
-        # DreamerV3 (which has no argmax path at all). Only eval.py reaches this;
-        # prefer get_explore_policy() there for protocol-comparable numbers.
+        # Argmax (dist.mode) policy, kept for the template's `policy: eval`
+        # contract but not what DreamerV3 reports: official DreamerV3 has no
+        # argmax path at all, and the argmax action can loop forever in the
+        # deterministic ALE. Both Dreamer experiments therefore set
+        # `evaluation.policy: explore`, which routes eval rollouts through
+        # `get_explore_policy()` below.
         return self._eval_policy
 
     def get_explore_policy(self) -> TensorDictModule:

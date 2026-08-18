@@ -1,0 +1,39 @@
+# Evaluation variant of ale.yaml. Drops EndOfLifeTransform + SignTransform so
+# episode rewards reflect true game scores and episodes end on game over rather
+# than life loss. VecNorm is also dropped — its running stats are not
+# checkpointed, so a fresh eval env would start cold and distort observations
+# the policy was trained on.
+#
+# `name` interpolates the TRAIN env's task on purpose: composed under
+# `environment@eval_environment`, `${environment.task}` resolves against the
+# config root, so `environment.task=Breakout` moves both envs at once. The
+# literal `task` below is inert in that position — it exists so this config
+# still resolves standalone (`python src/eval.py environment=ale_eval`).
+task: Pong
+name: ALE/${environment.task}-v5
+env_id: ${environment.task}-v5
+action_repeat: 4
+gym_backend: gymnasium
+gym_kwargs:
+  frame_skip: 4
+  from_pixels: true
+  pixels_only: false
+  categorical_action_encoding: true
+  repeat_action_probability: 0.25
+
+transforms:
+  - _target_: torchrl.envs.NoopResetEnv
+    noops: 30
+    random: true
+  - _target_: torchrl.envs.ToTensorImage
+  - _target_: torchrl.envs.GrayScale
+  - _target_: torchrl.envs.Resize
+    w: 84
+    h: 84
+  - _target_: torchrl.envs.CatFrames
+    N: 4
+    dim: -3
+  - _target_: torchrl.envs.RewardSum
+  - _target_: torchrl.envs.StepCounter
+    max_steps: 4500
+  - _target_: torchrl.envs.DoubleToFloat

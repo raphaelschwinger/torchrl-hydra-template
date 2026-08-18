@@ -41,10 +41,10 @@ epoch of mini-batches and the data is discarded.
 |----------|------|
 | Algorithm | [`a2c.py`](a2c.py) |
 | HPs | [`configs/algorithm/a2c.yaml`](../../../configs/algorithm/a2c.yaml) |
-| Experiment | [`configs/experiment/a2c/halfcheetah.yaml`](../../../configs/experiment/a2c/halfcheetah.yaml) |
+| Experiment | [`configs/experiment/a2c/gym.yaml`](../../../configs/experiment/a2c/gym.yaml) |
 
 ```shell
-python src/train.py experiment=a2c/halfcheetah
+python src/train.py experiment=a2c/gym
 ```
 
 ### Mapping pseudocode → code

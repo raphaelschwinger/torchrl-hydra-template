@@ -11,6 +11,7 @@ import src.algorithms.dreamer.networks as networks
 import src.algorithms.dreamer.perf_flags as perf_flags
 import src.algorithms.dreamer.rssm as rssm
 import src.algorithms.dreamer.tools as tools
+from src.components.ema import polyak_update
 from src.components.optim import LaProp, clip_grad_agc_
 from src.algorithms.dreamer.tools import to_f32
 
@@ -192,10 +193,11 @@ class DreamerV3(nn.Module):
     def _update_slow_target(self):
         """Update slow-moving value target network."""
         if self._slow_value_updates % self.slow_target_update == 0:
-            with torch.no_grad():
-                mix = self.slow_target_fraction
-                for v, s in zip(self.value.parameters(), self._slow_value.parameters()):
-                    s.data.copy_(mix * v.data + (1 - mix) * s.data)
+            polyak_update(
+                self.value.parameters(),
+                self._slow_value.parameters(),
+                self.slow_target_fraction,
+            )
         self._slow_value_updates += 1
 
     def train(self, mode=True):
@@ -278,6 +280,15 @@ class DreamerV3(nn.Module):
         """Return a (B, T, C, H*3, W) video tile: truth / reconstruction / open-loop."""
         if not hasattr(self, "decoder"):
             raise NotImplementedError("video_pred requires loss_scales.recon > 0.")
+        if "image" not in self.decoder.cnn_shapes:
+            # Proprioceptive stacks (DMC Proprio) decode vectors, not images —
+            # there is nothing to render. Callers gate on this; the explicit
+            # error is for direct use.
+            raise NotImplementedError(
+                "video_pred requires an image decoder head; this decoder emits "
+                f"{self.decoder.all_keys}. Set encoder/decoder cnn_keys to match "
+                "an image observation key."
+            )
         p_data = self.preprocess(data)
         B = min(p_data["action"].shape[0], 6)
         # (B, T, E)

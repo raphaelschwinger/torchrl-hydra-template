@@ -1,0 +1,29 @@
+# @package _global_
+# TD-MPC2 on dm_control cheetah-run (single-task, state obs, single GPU).
+# Reproduces the upstream online-RL setting at model_size=5.
+# Run another task with: environment.task=walker-walk
+defaults:
+  - override /algorithm: tdmpc2
+  - override /environment: dmc
+  - override /evaluation: dmc
+  - override /trainer: gpu
+  - override /logger: wandb
+  - _self_
+
+environment:
+  task: cheetah-run
+
+algorithm:
+  compile: true  # torch.compile(mode="reduce-overhead"); upstream default on GPU
+  # Decision steps per episode: 1000 sim steps / FrameSkipTransform(2). Drives
+  # the discount heuristic, so it must match the env's transform stack.
+  episode_length: 500
+
+trainer:
+  seed: 1
+  num_envs: 1  # TD-MPC2 plans for a single environment
+
+checkpoint:
+  enabled: true
+  save_every_n_steps: 50_000
+  save_last: true

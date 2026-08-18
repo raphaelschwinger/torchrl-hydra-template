@@ -1,0 +1,30 @@
+# @package _global_
+# BBF on Atari-100k JamesBond, paper flagship replay_ratio=8.
+# The reset cadence stays 40k gradient steps (= 5k env steps at RR8), which is
+# already the algorithm default.
+# ~4x the compute of the RR2 default; an A100-class GPU is recommended.
+# Run another game with: environment.task=Breakout
+defaults:
+  - override /algorithm: bbf
+  - override /environment: atari100k
+  - override /evaluation: atari100k
+  - override /trainer: gpu
+  - override /logger: wandb
+  - _self_
+
+# Distinct from the RR2 default, which shares this env_id. openrlbenchmark
+# groups runs by (exp_name, env_id), so the two variants must not collide.
+exp_name: bbf_rr8
+
+environment:
+  task: Jamesbond
+
+algorithm:
+  # >= trainer.total_frames, so the replay ring never wraps.
+  replay_capacity: 105_000
+  replay_ratio: 8
+
+trainer:
+  total_frames: 100_000
+  seed: 1
+  num_envs: 1              # BBF requires a single contiguous stream

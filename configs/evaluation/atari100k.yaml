@@ -1,0 +1,24 @@
+# Atari-100k protocol (Dopamine / DER / BBF).
+#
+# `canonical_source: eval` because the atari100k *training* stack wraps the env
+# in EpisodicLifeEnv, which sets terminated=True on life loss. RewardSum resets
+# there, so a completed training episode is a life-long fragment, not a game
+# score — it is not comparable to published numbers. Evaluation rollouts use
+# atari100k_eval (no EpisodicLifeEnv, no SignTransform) and are the canonical
+# source of `charts/episodic_return`.
+#
+# 100 end-of-training episodes is the official protocol (Dopamine's evaluation
+# phase; BBF reports the same) and remains the headline number. The 10-point
+# periodic curve on top of it costs ~10 x 10 episodes against the 100k-step
+# budget, which is what makes runs on this benchmark comparable *during*
+# training and not only at the end. Turn it off with
+# `evaluation.every_n_steps=0` if you only need the final number.
+defaults:
+  - none
+  - override /environment@eval_environment: atari100k_eval
+  - _self_
+
+every_n_steps: 10_000
+num_episodes: 10
+final_num_episodes: 100
+canonical_source: eval

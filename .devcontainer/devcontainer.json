@@ -30,9 +30,25 @@
         "ms-toolsai.jupyter"
     ],
     "settings": {
-        "terminal.integrated.defaultProfile.linux": "bash"
+        "terminal.integrated.defaultProfile.linux": "bash",
+        // Prefer IPv4 for Node-based tools (Claude Code extension). Bundled
+        // binaries may ignore this; /etc/hosts pinning in fix-claude-dns.sh
+        // is the reliable fix for getaddrinfo EREFUSED platform.claude.com.
+        "claudeCode.environmentVariables": [
+            {
+                "name": "NODE_OPTIONS",
+                "value": "--dns-result-order=ipv4first"
+            }
+        ]
     },
-    "remoteUser": "vscode"
+    "remoteEnv": {
+        "NODE_OPTIONS": "--dns-result-order=ipv4first"
+    },
+    "remoteUser": "vscode",
+    // Refresh Anthropic IPv4 /etc/hosts pins on every attach (DoH lookup) so
+    // intermittent campus DNS REFUSED / broken IPv6 does not break Claude Code.
+    // Does not rewrite resolv.conf — public UDP DNS is often firewalled here.
+    "postStartCommand": "bash .devcontainer/fix-claude-dns.sh"
     // Use 'forwardPorts' to make a list of ports inside the container available locally.
     // "forwardPorts": [],
     // Use 'postCreateCommand' to run commands after the container is created.

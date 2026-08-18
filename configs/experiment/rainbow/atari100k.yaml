@@ -1,0 +1,33 @@
+# @package _global_
+# Data-Efficient Rainbow (van Hasselt et al. 2019) on Atari-100k JamesBond.
+# Matches the data-efficient preset of https://github.com/Kaixhin/Rainbow:
+# n-step 20, target update every 2000 gradient steps, small 2-layer encoder
+# with hidden dim 256. Same class as `algorithm=rainbow` — the preset is a
+# property of the 100k budget, so it lives here.
+# Run another game with: environment.task=Breakout
+defaults:
+  - override /algorithm: rainbow
+  - override /environment: atari100k
+  - override /evaluation: atari100k
+  - override /trainer: gpu
+  - override /logger: wandb
+  - _self_
+
+# The data-efficient preset is what the literature calls DER, and it must not
+# collide with a full Rainbow run on the same game.
+exp_name: der
+
+environment:
+  task: Jamesbond
+
+algorithm:
+  init_random_frames: 1_600
+  hard_update_freq: 2_000   # target net <- online every N gradient steps
+  replay_capacity: 100_000
+  encoder_type: data_efficient
+  hidden_dim: 256
+  n_steps: 20
+
+trainer:
+  total_frames: 100_000
+  seed: 1

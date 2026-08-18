@@ -1,0 +1,66 @@
+# @package _global_
+# DreamerV3 on dm_control cheetah-run, **proprioceptive** (state) observations —
+# the DMC Proprio benchmark, not DMC Vision.
+#
+# State obs on purpose: this reuses the same `environment: dmc` stack as
+# experiment=ppo/dmc and experiment=tdmpc2/dmc, so the three are directly
+# comparable on the same task. DMC Vision would need `from_pixels` plumbed
+# through `_make_dmc_env` plus a working MUJOCO_GL renderer.
+#
+# Run another task with: environment.task=walker-walk
+defaults:
+  - /algorithm/dreamer: 12m        # DreamerV3 S — the paper's DMC Proprio size
+  - override /algorithm: dreamer
+  - override /environment: dmc
+  - override /evaluation: dmc
+  - override /trainer: gpu
+  - override /logger: wandb
+  - _self_
+
+environment:
+  task: cheetah-run
+  # Same physics and action repeat as the dmc stack, plus the `is_first` key the
+  # RSSM needs at episode boundaries. Spelled out here rather than patched into
+  # dmc.yaml because the rename is a DreamerV3 requirement, not a DMC one.
+  transforms:
+    - _target_: torchrl.envs.transforms.FrameSkipTransform
+      frame_skip: 2
+    - _target_: torchrl.envs.transforms.CatTensors
+      in_keys: [position, velocity]
+      out_key: observation
+    - _target_: torchrl.envs.transforms.DoubleToFloat
+    - _target_: torchrl.envs.transforms.InitTracker
+    - _target_: torchrl.envs.RenameTransform
+      in_keys: ["is_init"]
+      out_keys: ["is_first"]
+    - _target_: torchrl.envs.transforms.StepCounter
+    - _target_: torchrl.envs.transforms.RewardSum
+
+algorithm:
+  action_repeat: 2   # must match FrameSkipTransform above
+  dreamer_config:
+    # Vector observations instead of images: the encoder/decoder key regexes
+    # select `observation` and match no image key. `'$^'` is DreamerV3's
+    # match-nothing idiom. The CNN sub-configs stay in place but unused.
+    encoder:
+      mlp_keys: 'observation'
+      cnn_keys: '$^'
+    decoder:
+      mlp_keys: 'observation'
+      cnn_keys: '$^'
+
+# Same protocol as tdmpc2/dmc and ppo/dmc (evaluation=dmc: every 10k agent
+# steps, 10 episodes, eval canonical), except for the policy: official
+# DreamerV3 has no argmax path and reports the sampled actor, so eval rollouts
+# use `get_explore_policy()`.
+#
+# With `cnn_keys: '$^'` above there is no image decoder head, so the world-model
+# video is skipped here — see `algorithm.world_model_video_log_every`.
+evaluation:
+  policy: explore
+
+trainer:
+  total_frames: 1_000_000   # agent steps, matching ppo/dmc and tdmpc2/dmc
+  seed: 1
+  num_envs: 1
+  log_every_n_steps: 1_000

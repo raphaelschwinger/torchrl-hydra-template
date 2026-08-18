@@ -1,0 +1,29 @@
+# DeepMind Control Suite, state observations, via the dm_control backend.
+#
+# ``task`` is the "<domain>-<task>" id; the factory splits it on the first
+# hyphen (dm_control uses underscores inside its own names, so this is
+# unambiguous). Switch task with a single override:
+#   python src/train.py experiment=tdmpc2/dmc environment.task=walker-walk
+backend: dm_control
+task: cheetah-run
+# Benchmark id logged to W&B (openrlbenchmark matches config.env_id exactly).
+env_id: ${environment.task}
+# Sim steps per agent step; must match FrameSkipTransform below. Experiments
+# that drop the frame skip must set action_repeat: 1 (see experiment/ppo/dmc).
+action_repeat: 2
+
+transforms:
+  # Action repeat 2 (rewards summed) -> 500 decision steps per 1000-sim-step
+  # episode, matching TD-MPC2's DMC setup
+  # (github.com/nicklashansen/tdmpc2, envs/dmcontrol.py).
+  - _target_: torchrl.envs.transforms.FrameSkipTransform
+    frame_skip: 2
+  # Flatten the dm_control obs dict (e.g. position: 8, velocity: 9) into a
+  # single "observation" vector (alphabetical order = upstream's dict order).
+  - _target_: torchrl.envs.transforms.CatTensors
+    in_keys: [position, velocity]
+    out_key: observation
+  - _target_: torchrl.envs.transforms.DoubleToFloat
+  - _target_: torchrl.envs.transforms.InitTracker
+  - _target_: torchrl.envs.transforms.StepCounter
+  - _target_: torchrl.envs.transforms.RewardSum

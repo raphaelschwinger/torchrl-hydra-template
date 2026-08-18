@@ -1,0 +1,57 @@
+# Rainbow (Hessel et al. 2018) with standard (Dopamine-style) hyperparameters
+# on pixels. For the official Atari-100k data-efficient preset, use
+# configs/experiment/rainbow/atari100k.yaml.
+_target_: src.algorithms.rainbow.RainbowAlgorithm
+
+obs_key: pixels
+
+# Optimisation
+lr: 1e-4
+gamma: 0.99
+batch_size: 32
+max_grad_norm: 10.0
+
+# Exploration fallback (only used when noisy=false)
+eps_start: 1.0
+eps_end: 0.01
+annealing_frames: 250_000
+
+# Data collection
+frames_per_batch: 4
+init_random_frames: 20_000
+max_frames_per_traj: -1
+
+# Learning schedule
+num_updates: 4            # gradient updates per collector batch
+hard_update_freq: 8_000   # target net <- online every N gradient steps
+replay_capacity: 1_000_000
+encoder_type: dqn
+hidden_dim: 512
+
+# Dueling network (Wang et al. 2016)
+dueling: true
+
+# Noisy networks (Fortunato et al. 2018)
+noisy: true
+noisy_std: 0.1
+eval_noise: true
+
+# Double Q-learning (van Hasselt et al. 2016) — only applies when distributional=false
+double_dqn: true
+
+# Distributional RL / C51 (Bellemare et al. 2017)
+distributional: true
+num_atoms: 51
+v_min: -10.0
+v_max: 10.0
+
+# Prioritized experience replay (Schaul et al. 2016)
+prioritized: true
+prb_alpha: 0.5
+prb_beta_start: 0.4
+prb_beta_end: 1.0
+prb_beta_frames: 100_000
+prb_eps: 1e-6
+
+# Multi-step returns
+n_steps: 3

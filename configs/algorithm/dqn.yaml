@@ -1,3 +1,12 @@
+defaults:
+  # The Q-network is a config group, not an inline block: Hydra merges dicts,
+  # so patching `network._target_` from an experiment would leave this option's
+  # kwargs behind. Swap the whole option instead —
+  # `algorithm/network=nature_dqn` on the CLI, or `override /algorithm/network:`
+  # in an experiment.
+  - network: mlp_q
+  - _self_
+
 _target_: src.algorithms.dqn.DQNAlgorithm
 
 # Callable factories (override via nested configs; requires ``instantiate(cfg.algorithm)``).
@@ -8,15 +17,6 @@ replay_buffer:
     _target_: torchrl.data.LazyTensorStorage
     max_size: 10_000
     device: cpu
-
-network:
-  _partial_: true
-  _target_: src.networks.make_mlp_q_net
-  num_cells: [120, 84]
-  # `torch.nn.ReLU` via `_target_` would instantiate a module; MLP needs the class.
-  activation_class:
-    _target_: hydra.utils.get_class
-    path: torch.nn.ReLU
 
 # Optimisation
 lr: 2.5e-4

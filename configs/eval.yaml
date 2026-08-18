@@ -1,24 +1,39 @@
 defaults:
   - _self_
   - paths: default
+  - trainer: eval
   - algorithm: ???
   - environment: ???
-  - environment@eval_environment: null   # optional eval env; falls back to environment
-  - logger: []
+  - evaluation: gym        # measurement protocol + eval env stack
+  - logger: wandb
+  - experiment: null
   - override hydra/job_logging: colorlog
   - override hydra/hydra_logging: colorlog
 
-trainer:
-  _target_: src.trainers.StepTrainer
-  accelerator: cpu
-  devices: [0]
-  seed: 42
-  total_frames: 0          # not used for eval, but required by trainer
-  num_envs: 1
-  log_every_n_steps: 1_000
-  num_eval_episodes: 10
+# This entry point only evaluates. `train: false` is what keeps it from
+# consuming trainer.total_frames; `evaluation.final_num_episodes` sets how many
+# episodes it runs.
+train: false
+eval: true
+
+env_id: ${oc.select:environment.env_id,unknown}
+exp_name: ${hydra:runtime.choices.algorithm}
+seed: ${trainer.seed}
+
+run_name: ${hydra:runtime.choices.algorithm}_${oc.select:environment.task,unknown}_${hydra:runtime.choices.environment}_eval_${now:%Y-%m-%d_%H-%M-%S}
+
+# src/eval.py normalises the W&B logger for this entry point (job_type=eval,
+# an `eval` tag, and the run-id sidecar) regardless of which logger config an
+# `experiment=` selects — experiments carry their own `override /logger: wandb`,
+# which would otherwise win over anything chosen here.
+#
+# Default: a separate run tagged `eval`. To append to the training run that
+# produced the checkpoint instead, pass `logger.0.resume=must`; eval.py then
+# reads the run id from `wandb_run.json` next to `checkpoint.resume_from`, and
+# fails loudly if it is not there.
 
 checkpoint:
+  save_dir: ${paths.output_dir}/checkpoints
   resume_from: ???        # required: path to checkpoint file
 
 hydra:

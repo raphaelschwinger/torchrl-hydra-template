@@ -12,7 +12,8 @@ class CheckpointCallback:
 
     Args:
         save_dir: directory where checkpoint files are written
-        save_every_n_steps: save a checkpoint every this many environment steps
+        save_every_n_steps: save a checkpoint every this many environment
+            steps; 0 (or negative) disables periodic saves
         save_last: if True, save "last.pt" when training finishes
     """
 
@@ -36,7 +37,7 @@ class CheckpointCallback:
         self.save_dir.mkdir(parents=True, exist_ok=True)
 
     def on_step_end(self, metrics: dict[str, float], step: int) -> None:
-        if self._trainer is None:
+        if self._trainer is None or self.save_every_n_steps <= 0:
             return
         # Check if we've crossed a save boundary since the last save
         if step // self.save_every_n_steps > self._last_saved_step // self.save_every_n_steps:

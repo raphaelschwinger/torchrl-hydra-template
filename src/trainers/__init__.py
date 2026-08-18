@@ -1,5 +1,5 @@
-from src.trainers.BaseTrainer import BaseTrainer, Callback, TrainerEvent, fire_callbacks
-from src.trainers.StepTrainer import StepTrainer
+from src.trainers.base import BaseTrainer, Callback, TrainerEvent, fire_callbacks
+from src.trainers.step_trainer import StepTrainer
 
 __all__ = [
     "BaseTrainer",

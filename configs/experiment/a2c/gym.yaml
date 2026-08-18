@@ -1,0 +1,15 @@
+# @package _global_
+# A2C on HalfCheetah-v4 — replicates the torchrl SOTA reference
+# (https://github.com/pytorch/rl/blob/main/sota-implementations/a2c/a2c_mujoco.py).
+# Run another task with: environment.task=Ant-v4
+defaults:
+  - override /algorithm: a2c
+  - override /environment: gym
+  - override /evaluation: gym
+  - override /logger: wandb
+  - _self_
+
+environment:
+  task: HalfCheetah-v4
+
+# trainer/default.yaml already provides cpu / 1M frames / 1 env / seed 42.

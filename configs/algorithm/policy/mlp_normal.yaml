@@ -1,0 +1,25 @@
+# @package algorithm
+# Separate MLP actor/critic for continuous control on state observations
+# (cleanRL ppo_continuous_action.py). No shared trunk.
+#
+# Actor and critic are swapped together as one group option: the pixel variant
+# needs a `common_network` that has no counterpart here, so splitting them into
+# separate keys would let a half-applied override survive.
+common_network: null
+
+actor_network:
+  _partial_: true
+  _target_: src.components.networks.make_normal_mlp_actor
+  num_cells: [64, 64]
+  # `torch.nn.Tanh` via `_target_` would instantiate a module; MLP needs the class.
+  activation_class:
+    _target_: hydra.utils.get_class
+    path: torch.nn.Tanh
+
+value_network:
+  _partial_: true
+  _target_: src.components.networks.make_mlp_value
+  num_cells: [64, 64]
+  activation_class:
+    _target_: hydra.utils.get_class
+    path: torch.nn.Tanh

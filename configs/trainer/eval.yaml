@@ -1,0 +1,8 @@
+defaults:
+  - default
+  - _self_
+
+# Evaluation never trains. The trainer still builds a collector in setup(), so
+# this keeps it from warning about a training budget that is never consumed.
+# Note: `experiment=` configs set their own total_frames and will override this.
+total_frames: 0

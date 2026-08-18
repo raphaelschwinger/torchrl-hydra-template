@@ -1,0 +1,9 @@
+# Plain MLP Q-network for state observations (DQN on CartPole & co).
+# Package is inferred from the group path: algorithm.network
+_partial_: true
+_target_: src.components.networks.make_mlp_q_net
+num_cells: [120, 84]
+# `torch.nn.ReLU` via `_target_` would instantiate a module; MLP needs the class.
+activation_class:
+  _target_: hydra.utils.get_class
+  path: torch.nn.ReLU

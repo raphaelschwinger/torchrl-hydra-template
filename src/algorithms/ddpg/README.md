@@ -45,10 +45,10 @@ value. Learning uses a replay buffer and slowly moving target networks.
 |----------|------|
 | Algorithm | [`ddpg.py`](ddpg.py) |
 | HPs | [`configs/algorithm/ddpg.yaml`](../../../configs/algorithm/ddpg.yaml) |
-| Experiment | [`configs/experiment/ddpg/halfcheetah.yaml`](../../../configs/experiment/ddpg/halfcheetah.yaml) |
+| Experiment | [`configs/experiment/ddpg/gym.yaml`](../../../configs/experiment/ddpg/gym.yaml) |
 
 ```shell
-python src/train.py experiment=ddpg/halfcheetah
+python src/train.py experiment=ddpg/gym
 ```
 
 ### Mapping pseudocode → code
@@ -70,4 +70,4 @@ Reference implementation: [torchrl SOTA DDPG](https://github.com/pytorch/rl/blob
 
 | Run | Environment | Config | Seed | Frames | Eval return | Notes |
 |-----|-------------|--------|------|--------|-------------|-------|
-| [ddpg_halfcheetah_2026-05-11_15-07-06](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/mg1b7byc) | HalfCheetah-v4 | `experiment=ddpg/halfcheetah` | 42 | 1,000,000 | 11,536.8 | best train/episode_reward |
+| — | — | — | — | — | — | No finished runs tagged ``template`` yet — see [W&B table](https://wandb.ai/LatentLab/torchrl-hydra-template/table) |

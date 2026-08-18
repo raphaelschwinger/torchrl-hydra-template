@@ -1,0 +1,17 @@
+[2026-07-08 12:12:52,567][absl][INFO] - MUJOCO_GL is not set, so an OpenGL backend will be chosen automatically.
+[2026-07-08 12:12:52,589][absl][INFO] - Successfully imported OpenGL backend: glfw
+[2026-07-08 12:12:52,729][absl][INFO] - MuJoCo library version is: 3.10.0
+[2026-07-08 12:13:57,381][absl][INFO] - MUJOCO_GL is not set, so an OpenGL backend will be chosen automatically.
+[2026-07-08 12:13:57,403][absl][INFO] - Successfully imported OpenGL backend: glfw
+[2026-07-08 12:13:57,544][absl][INFO] - MuJoCo library version is: 3.10.0
+[2026-07-08 12:21:39,904][absl][INFO] - MUJOCO_GL is not set, so an OpenGL backend will be chosen automatically.
+[2026-07-08 12:21:39,931][absl][INFO] - Successfully imported OpenGL backend: glfw
+[2026-07-08 12:21:40,085][absl][INFO] - MuJoCo library version is: 3.10.0
+[2026-07-08 12:28:06,681][absl][INFO] - MUJOCO_GL is not set, so an OpenGL backend will be chosen automatically.
+[2026-07-08 12:28:06,707][absl][INFO] - Successfully imported OpenGL backend: glfw
+[2026-07-08 12:28:06,856][absl][INFO] - MuJoCo library version is: 3.10.0
+[2026-07-08 12:32:40,160][absl][INFO] - MUJOCO_GL is not set, so an OpenGL backend will be chosen automatically.
+[2026-07-08 12:32:40,181][absl][INFO] - Successfully imported OpenGL backend: glfw
+[2026-07-08 12:32:40,320][absl][INFO] - MuJoCo library version is: 3.10.0
+[2026-07-09 10:55:16,441][absl][INFO] - MUJOCO_GL=off, attempting to import specified OpenGL backend.
+[2026-07-09 10:55:16,586][absl][INFO] - MuJoCo library version is: 3.10.0

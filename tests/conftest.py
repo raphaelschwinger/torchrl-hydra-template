@@ -40,4 +40,5 @@ def load_experiment_cfg(
     overrides = [f"experiment={experiment}", *(extra_overrides or [])]
     with initialize_config_dir(config_dir=CONFIGS_DIR, version_base="1.3"):
         cfg = compose(config_name="train", overrides=overrides)
+
     return cfg

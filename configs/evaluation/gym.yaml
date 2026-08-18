@@ -1,0 +1,15 @@
+# Gymnasium state-observation tasks (classic control + MuJoCo).
+#
+# These stacks have no train-only transforms — no reward clipping, no episodic
+# life — so a completed training episode *is* the true score. The training
+# stream is canonical and periodic evaluation is off by default; a fresh env
+# instance built from the same config is used only for the post-training stage.
+#
+# Turn periodic evaluation on with:
+#   python src/train.py experiment=ddpg/gym evaluation.every_n_steps=10_000
+defaults:
+  - none
+  - _self_
+
+final_num_episodes: 10
+canonical_source: train

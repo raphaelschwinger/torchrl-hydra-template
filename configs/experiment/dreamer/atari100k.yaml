@@ -1,31 +1,70 @@
 # @package _global_
-# Generic Atari100k Dreamer experiment. Override env_id/environment.name for a
-# different game, e.g.:
-#   experiment=dreamer/atari100k env_id=hero environment.name=ALE/Hero-v5
+# DreamerV3 on Atari-100k. Swap the world model with `algorithm=r2dreamer` or
+# `algorithm=dreamerpro`, and the model size with `algorithm/dreamer=50m`.
+# Run another game with: environment.task=Breakout
 defaults:
   - /algorithm/dreamer: 200m
   - override /algorithm: dreamer
-  - override /environment: atari_dreamer
-  - override /logger: wandb_dreamer
+  - override /environment: atari100k
+  - override /evaluation: atari100k_native
+  - override /trainer: gpu
+  - override /logger: wandb
   - _self_
 
-env_id: jamesbond
-
 environment:
-  name: ALE/Jamesbond-v5
+  task: Jamesbond
+  # DreamerV3 preprocessing differs from the shared Atari-100k stack: 64x64
+  # RGB frames (no grayscale, no frame stack — the RSSM carries history) and
+  # `is_first` / `image` key names.
+  gym_kwargs:
+    frame_skip: 1                   # required by AtariPreprocessing
+    repeat_action_probability: 0.0
+    full_action_space: false        # minimal action set
+    from_pixels: true
+    pixels_only: false
+    categorical_action_encoding: false
+  gymnasium_wrappers:
+    - _target_: gymnasium.wrappers.AtariPreprocessing
+      noop_max: 30                  # 1-30 raw-frame noops on reset (Atari-100k protocol).
+                                    # A NoopResetEnv transform would sit above frame_skip=4
+                                    # and produce 4-120 raw frames of noops instead.
+      frame_skip: 4                 # action_repeat=4 with max-pool of last 2 frames
+      screen_size: 64               # replaces the Resize transform
+      grayscale_obs: false          # keep RGB for DreamerV3
+      terminal_on_life_loss: false
+      scale_obs: false              # keep uint8; ToTensorImage normalises to [0,1]
+  transforms:
+    - _target_: torchrl.envs.InitTracker
+    - _target_: torchrl.envs.RenameTransform
+      in_keys: ["is_init"]
+      out_keys: ["is_first"]
+    - _target_: torchrl.envs.ToTensorImage
+    - _target_: torchrl.envs.RenameTransform
+      in_keys: ["pixels"]
+      out_keys: ["image"]
+    - _target_: torchrl.envs.StepCounter
+      max_steps: 27000              # 108000 ALE frames / action_repeat=4
+    - _target_: torchrl.envs.RewardSum
+    - _target_: torchrl.envs.DoubleToFloat
+
+algorithm:
+  action_repeat: 4        # AtariPreprocessing(frame_skip=4) above
+
+# This stack sets `terminal_on_life_loss: false` with no reward clipping, so the
+# *training* stream is already true game scores — but BBF and Rainbow report
+# evaluation rollouts, so Dreamer does too (`canonical_source: eval`, inherited)
+# and the three are read off the same axis. `atari100k_native` keeps those
+# rollouts on this experiment's own 64x64 RGB stack.
+#
+# `policy: explore` because official DreamerV3 has no argmax path: it acts from
+# the sampled actor everywhere, and that is what its published scores measure.
+evaluation:
+  policy: explore
+
+# run_name uses the base pattern (configs/train.yaml); model_size isn't in it,
+# but is logged to wandb.config automatically like every other resolved key,
+# so `+algorithm/dreamer=50m` sweeps stay distinguishable there.
 
 trainer:
-  accelerator: gpu
-  devices: [3]
-  seed: 42
-  total_frames: 1.1e5 # 110k agent steps = 440k game frames; official DreamerV3 trains 10% past the 100k budget (eval/score_* still cut off at 400k frames)
-  num_envs: 1
-  log_every_n_steps: 1000
-
-env:
-  encoder:
-    mlp_keys: '$^'
-    cnn_keys: 'image'
-  decoder:
-    mlp_keys: '$^'
-    cnn_keys: 'image'
+  total_frames: 100_000
+  log_every_n_steps: 1_000

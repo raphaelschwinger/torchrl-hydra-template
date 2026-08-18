@@ -1,14 +1,19 @@
-_target_: src.algorithms.dreamer.dreamer.DreamerAlgorithm
+_target_: src.algorithms.dreamer.DreamerAlgorithm
 _recursive_: false   # dreamer_config has _target_ but is passed as DictConfig, not instantiated here
 
 
 # Wrapper Parameters (DreamerAlgorithm)
+# `action_repeat` (must match the env's frame skip) is a property of the env,
+# so it is set per experiment, not here. The benchmark scoring cutoff is
+# `evaluation.summary_max_step` (see configs/evaluation/).
 train_ratio: 128 # Divides Batch_Size * Batch_Length to determine the number of updates per data collection phase (how many frames till next update)
-action_repeat: 4  # game frames per agent step; AtariPreprocessing(frame_skip=4) in atari_dreamer.yaml
-device: ${trainer.accelerator}
+# Video diagnostics, in environment frames; 0 disables. Both are a no-op on
+# stacks without an image observation: the world-model video needs a decoder CNN
+# head (DMC Proprio decodes vectors, so it is skipped), and the agent video needs
+# an `image` key to record.
+world_model_video_log_every: 50_000  # truth / reconstruction / open-loop tile
 agent_video_log_every: 50_000  # log agent gameplay video every N environment frames
 agent_video_max_steps: 400      # cap video length (~20s at 20fps, continues across episode resets)
-benchmark_frames: 400_000       # eval/score_* cutoff in game frames (Atari100k: 100k agent steps x action_repeat); later episodes only show on episode/score
 
 buffer_config:
   num_envs: ${trainer.num_envs}  # must match trainer.num_envs
@@ -86,8 +91,8 @@ dreamer_config:
     device: ${trainer.accelerator}
     
   encoder:
-    mlp_keys: ${env.encoder.mlp_keys}
-    cnn_keys: ${env.encoder.cnn_keys}
+    mlp_keys: '$^'   # no vector observations
+    cnn_keys: 'image'
     mlp:
       shape: null
       layers: 3
@@ -107,8 +112,8 @@ dreamer_config:
       mults: [2, 3, 4, 4]
       
   decoder:
-    mlp_keys: ${env.decoder.mlp_keys}
-    cnn_keys: ${env.decoder.cnn_keys}
+    mlp_keys: '$^'   # no vector observations
+    cnn_keys: 'image'
     mlp_dist:
       name: 'symlog_mse'
     cnn_dist:

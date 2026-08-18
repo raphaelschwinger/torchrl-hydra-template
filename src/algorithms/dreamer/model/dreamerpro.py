@@ -6,6 +6,8 @@ import torch.nn.functional as F
 from torch import nn
 from torch.amp import autocast
 
+from src.components.ema import polyak_update
+
 from .dreamerv3 import DreamerV3
 
 
@@ -48,10 +50,8 @@ class _DreamerProMixin:
         self._prototypes.data.copy_(prototypes)
         if self._ema_updates % self.ema_update_every == 0:
             mix = self.ema_update_fraction if self._ema_updates > 0 else 1.0
-            for s, d in zip(self.encoder.parameters(), self._ema_encoder.parameters()):
-                d.data.copy_(mix * s.data + (1 - mix) * d.data)
-            for s, d in zip(self.obs_proj.parameters(), self._ema_obs_proj.parameters()):
-                d.data.copy_(mix * s.data + (1 - mix) * d.data)
+            polyak_update(self.encoder.parameters(), self._ema_encoder.parameters(), mix)
+            polyak_update(self.obs_proj.parameters(), self._ema_obs_proj.parameters(), mix)
         self._ema_updates += 1
 
     def sinkhorn(self, scores):

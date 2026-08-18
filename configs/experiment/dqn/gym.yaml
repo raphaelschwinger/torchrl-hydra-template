@@ -1,0 +1,16 @@
+# @package _global_
+# DQN on CartPole — replicates the torchrl SOTA reference
+# (https://github.com/pytorch/rl/blob/main/sota-implementations/dqn/dqn_cartpole.py).
+# Run another task with: environment.task=Acrobot-v1
+defaults:
+  - override /algorithm: dqn
+  - override /environment: gym
+  - override /evaluation: gym
+  - override /logger: wandb
+  - _self_
+
+environment:
+  task: CartPole-v1
+
+trainer:
+  total_frames: 500_100

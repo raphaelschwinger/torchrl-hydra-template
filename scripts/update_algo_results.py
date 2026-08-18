@@ -28,7 +28,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 def algo_readme_path(algo: str) -> Path:
     return REPO_ROOT / "src" / "algorithms" / algo / "README.md"
-EXPERIMENT_DIR = REPO_ROOT / "configs" / "experiment"
+CONFIG_DIR = REPO_ROOT / "configs"
+EXPERIMENT_DIR = CONFIG_DIR / "experiment"
 WANDB_TABLE_URL = "https://wandb.ai/LatentLab/torchrl-hydra-template/table"
 CANONICAL_ENTITY = "LatentLab"
 DEFAULT_PROJECT = "torchrl-hydra-template"
@@ -45,18 +46,29 @@ ALGO_TARGET_PREFIXES: dict[str, str] = {
     "src.algorithms.dqn.": "dqn",
     "src.algorithms.ddpg.": "ddpg",
     "src.algorithms.a2c.": "a2c",
+    "src.algorithms.ppo.": "ppo",
+    "src.algorithms.tdmpc2.": "tdmpc2",
     "src.algorithms.dreamer.": "dreamer",
+    "src.algorithms.rainbow.": "rainbow",
+    "src.algorithms.bbf.": "bbf",
 }
 
 
 @dataclass(frozen=True)
 class ExperimentSpec:
-    """One composed experiment under ``configs/experiment/``."""
+    """One composed experiment under ``configs/experiment/``.
 
-    path: str  # e.g. ``dqn/cartpole``
-    algorithm_choice: str  # e.g. ``dqn``, ``dqn_atari``
-    environment_choice: str  # e.g. ``cartpole``, ``pong_train``
-    environment_name: str | None = None  # set when the experiment YAML overrides name directly
+    Built by actually composing the Hydra config rather than regex-scraping the
+    YAML, so this reads the same source of truth as the W&B run config it is
+    matched against.
+    """
+
+    path: str  # e.g. ``dqn/gym``
+    algorithm_choice: str | None  # set when it differs from the experiment default
+    algo_identity: tuple  # (target, obs_key, encoder_type, world-model target)
+    env_family: str  # ``gym`` | ``dm_control`` | ``ale``
+    env_task: str | None  # this experiment's default task
+    algo_scalars: tuple  # every scalar algorithm kwarg, for tie-breaking
 
 
 @dataclass(frozen=True)
@@ -73,41 +85,179 @@ class ResultRow:
     notes: str
 
 
+def _compose(overrides: list[str]):
+    """Compose the training config outside a Hydra runtime.
+
+    Only ``algorithm`` and ``environment`` are ever resolved by callers, so the
+    ``${hydra:...}`` interpolations in ``paths`` / ``run_name`` are never hit.
+    """
+    from hydra import compose, initialize_config_dir
+    from hydra.core.global_hydra import GlobalHydra
+
+    GlobalHydra.instance().clear()
+    with initialize_config_dir(config_dir=str(CONFIG_DIR), version_base="1.3"):
+        return compose(config_name="train", overrides=overrides)
+
+
+def _to_dict(node) -> dict:
+    from omegaconf import OmegaConf
+
+    if node is None:
+        return {}
+    return OmegaConf.to_container(node, resolve=True)
+
+
+def algo_scalars(algo_cfg: dict) -> tuple:
+    """Every scalar algorithm kwarg, as a sorted ``(key, value)`` tuple.
+
+    Used only to break ties between experiments that share an identity and a
+    benchmark — e.g. BBF's RR2 and RR8 variants, which differ solely by
+    ``replay_ratio``. Comparing all scalars avoids having to hand-register a
+    new discriminator every time such a pair appears.
+    """
+    return tuple(
+        sorted(
+            (k, v)
+            for k, v in algo_cfg.items()
+            if isinstance(v, (int, float, bool, str)) or v is None
+        )
+    )
+
+
+def _class_identity(target: str | None) -> tuple | None:
+    """``(package, ClassName)`` — stable when a module path is refactored.
+
+    Historical runs logged e.g. ``src.algorithms.dreamer.dreamer.DreamerAlgorithm``
+    before the package re-export shortened it; both must resolve to the same
+    algorithm.
+    """
+    if not target:
+        return None
+    return (algo_package_from_target(target), target.rsplit(".", 1)[-1])
+
+
+def algo_identity(algo_cfg: dict) -> tuple:
+    """Identity of an algorithm setup, shared by specs and W&B run configs.
+
+    ``obs_key`` separates the pixel and state variants of one algorithm class,
+    ``encoder_type`` separates Rainbow from its data-efficient preset, and the
+    world-model class separates DreamerV3 / R2Dreamer / DreamerPro.
+    """
+    return (
+        _class_identity(algo_cfg.get("_target_")),
+        algo_cfg.get("obs_key") or "observation",
+        algo_cfg.get("encoder_type"),
+        _class_identity((algo_cfg.get("dreamer_config") or {}).get("_target_")),
+    )
+
+
+def env_family(env_cfg: dict) -> str:
+    """Coarse benchmark identity — stable across a change of task.
+
+    Deliberately coarse for Atari: the preprocessing stack has changed shape
+    over time (max-and-skip moved into ``gymnasium_wrappers``), and pinning the
+    family to it would orphan older runs of an experiment that still exists.
+    Which ALE protocol a run used is already carried by the algorithm identity
+    (``obs_key``, ``encoder_type``).
+    """
+    if env_cfg.get("backend") == "dm_control":
+        return "dm_control"
+    if str(env_cfg.get("name") or "").startswith("ALE/"):
+        return "ale"
+    return "gym"
+
+
+def env_task(env_cfg: dict) -> str | None:
+    """The task within a benchmark, normalised across old and new config shapes."""
+    task = env_cfg.get("task")
+    name = env_cfg.get("name")
+    if env_cfg.get("backend") == "dm_control":
+        if task and "-" in task:
+            return task                      # new form: cheetah-run
+        if name and task:
+            return f"{name}-{task}"          # old form: name: cheetah + task: run
+        return (name or task or "").replace("/", "-") or None
+    if name:
+        match = re.fullmatch(r"ALE/(.+)-v\d+", name)
+        return match.group(1) if match else name
+    return task
+
+
 def load_experiment_registry(root: Path = EXPERIMENT_DIR) -> list[ExperimentSpec]:
-    """Parse ``configs/experiment/**/*.yaml`` defaults into experiment specs."""
+    """Compose every experiment (and every algorithm variant of it) into a spec.
+
+    Algorithm options sharing an experiment's algorithm class are enumerated so
+    runs launched as e.g. ``experiment=dreamer/atari100k algorithm=r2dreamer``
+    still resolve to a reproducible command.
+    """
     specs: list[ExperimentSpec] = []
+    algo_options = _algorithm_options()
+
     for path in sorted(root.rglob("*.yaml")):
-        rel = path.relative_to(root)
-        exp_path = rel.with_suffix("").as_posix()
-        text = path.read_text(encoding="utf-8")
-        algo = _parse_override(text, "/algorithm")
-        env = _parse_override(text, "/environment")
-        if algo is None or env is None:
+        exp_path = path.relative_to(root).with_suffix("").as_posix()
+        try:
+            cfg = _compose([f"experiment={exp_path}"])
+        except Exception:
             continue
+        base_algo = _to_dict(cfg.algorithm)
+        env_cfg = _to_dict(cfg.environment)
+        family = env_family(env_cfg)
+        task = env_task(env_cfg)
+
         specs.append(
             ExperimentSpec(
                 path=exp_path,
-                algorithm_choice=algo,
-                environment_choice=env,
-                environment_name=_parse_env_name(text),
+                algorithm_choice=None,
+                algo_identity=algo_identity(base_algo),
+                env_family=family,
+                env_task=task,
+                algo_scalars=algo_scalars(base_algo),
             )
         )
+
+        # Sibling algorithm options of the same class (dreamerpro, r2dreamer...).
+        for option, target in algo_options.items():
+            if target != base_algo.get("_target_"):
+                continue
+            try:
+                variant = _compose([f"experiment={exp_path}", f"algorithm={option}"])
+            except Exception:
+                continue
+            variant_algo = _to_dict(variant.algorithm)
+            identity = algo_identity(variant_algo)
+            if identity == specs[-1].algo_identity:
+                continue
+            specs.append(
+                ExperimentSpec(
+                    path=exp_path,
+                    algorithm_choice=option,
+                    algo_identity=identity,
+                    env_family=family,
+                    env_task=task,
+                    algo_scalars=algo_scalars(variant_algo),
+                )
+            )
     return specs
 
 
-def _parse_override(text: str, group: str) -> str | None:
-    match = re.search(rf"override {re.escape(group)}:\s*(\S+)", text)
-    return match.group(1) if match else None
+def _algorithm_options() -> dict[str, str]:
+    """``{option name: _target_}`` for every top-level algorithm config.
 
-
-def _parse_env_name(text: str) -> str | None:
-    """Read environment.name from an experiment YAML if set explicitly."""
-    match = re.search(
-        r"^environment:\s*$\n(?:[ \t]+\S[^\n]*\n)*?[ \t]+name:\s*(\S[^\n]*)",
-        text,
-        re.MULTILINE,
-    )
-    return match.group(1).strip().strip("'\"") if match else None
+    Composed rather than regex-scraped: variants like ``r2dreamer`` inherit
+    ``_target_`` through their ``defaults:`` list and have no literal key of
+    their own. Only the ``_target_`` leaf is read, so configs with unresolvable
+    interpolations (dreamer's ``${model.*}``) do not need a size preset here.
+    """
+    options: dict[str, str] = {}
+    for path in sorted((CONFIG_DIR / "algorithm").glob("*.yaml")):
+        try:
+            cfg = _compose([f"algorithm={path.stem}", "environment=gym"])
+            target = cfg.algorithm._target_
+        except Exception:
+            continue
+        if target:
+            options[path.stem] = str(target)
+    return options
 
 
 def algo_package_from_target(target: str | None) -> str | None:
@@ -123,48 +273,49 @@ def infer_experiment_config(
     config: dict,
     registry: list[ExperimentSpec],
 ) -> str:
-    """Return ``experiment=<path>`` for a W&B run config."""
+    """Return the CLI command that reproduces a W&B run.
+
+    Matching is on algorithm identity plus benchmark family, so a run of a game
+    or task the experiment does not default to still resolves — the differing
+    task comes back as an explicit ``environment.task=`` override.
+    """
     explicit = config.get("experiment")
     if explicit not in (None, "", "null"):
         return f"experiment={explicit}"
 
     env_cfg = config.get("environment") or {}
-    env_name = env_cfg.get("name")
-    algo_cfg = config.get("algorithm") or {}
-    algo_target = algo_cfg.get("_target_")
-    obs_key = algo_cfg.get("obs_key", "observation")
+    run_algo = config.get("algorithm") or {}
+    identity = algo_identity(run_algo)
+    family = env_family(env_cfg)
+    task = env_task(env_cfg)
 
-    for spec in registry:
-        # Use the name from the experiment YAML if set; fall back to env YAML.
-        # Some base env configs use name: ??? (e.g. atari_dreamer) and rely on
-        # the experiment YAML to supply the actual name.
-        if spec.environment_name is not None:
-            env_choice_name = spec.environment_name
-        else:
-            env_yaml = REPO_ROOT / "configs" / "environment" / f"{spec.environment_choice}.yaml"
-            if not env_yaml.exists():
-                continue
-            env_choice_name = _read_yaml_scalar(env_yaml, "name")
-            if not env_choice_name or env_choice_name == "???":
-                continue
-        if env_choice_name != env_name:
-            continue
+    candidates = [
+        spec
+        for spec in registry
+        if spec.algo_identity == identity and spec.env_family == family
+    ]
+    if not candidates:
+        return "—"
 
-        algo_yaml = REPO_ROOT / "configs" / "algorithm" / f"{spec.algorithm_choice}.yaml"
-        if not algo_yaml.exists():
-            continue
-        algo_target_expected = _read_yaml_scalar(algo_yaml, "_target_")
-        if algo_target_expected != algo_target:
-            continue
+    # Several experiments can share an identity and a benchmark and differ only
+    # in scalar hyperparameters (BBF RR2 vs RR8). Pick the one whose scalars the
+    # run actually agrees with, rather than whichever sorts first.
+    if len(candidates) > 1:
+        run_scalars = dict(algo_scalars(run_algo))
+        candidates.sort(
+            key=lambda s: sum(
+                1 for k, v in s.algo_scalars if k in run_scalars and run_scalars[k] == v
+            ),
+            reverse=True,
+        )
 
-        if spec.algorithm_choice == "dqn_atari" and obs_key != "pixels":
-            continue
-        if spec.algorithm_choice == "dqn" and obs_key not in (None, "observation"):
-            continue
-
-        return f"experiment={spec.path}"
-
-    return "—"
+    spec = candidates[0]
+    parts = [f"experiment={spec.path}"]
+    if spec.algorithm_choice:
+        parts.append(f"algorithm={spec.algorithm_choice}")
+    if task and task != spec.env_task:
+        parts.append(f"environment.task={task}")
+    return " ".join(parts)
 
 
 def _read_yaml_scalar(path: Path, key: str) -> str | None:
@@ -191,34 +342,74 @@ def format_return(value: float | None) -> str:
     return f"{value:.2f}"
 
 
-def get_eval_return(run) -> tuple[float | None, str]:
-    """Best available return metric and optional note suffix.
+# openrlbenchmark's reporting rule: the mean of the last N logged points of the
+# metric (its `metric_last_n_average_window`, default 100).
+SUMMARY_WINDOW = 100
 
-    Priority:
-      1. eval/score_mean_last10pct  — Dreamer end-of-run summary (last 10 % of frames)
-      2. eval/return_mean           — DQN / DDPG eval-env metric
-      3. max train/episode_reward   — fallback for runs without an eval env
+# Metric keys written by runs predating the unified evaluation protocol. Kept so
+# already-finished runs still populate the tables; each carries a note because
+# the three are not comparable with each other or with the canonical metric.
+LEGACY_KEYS = (
+    ("eval/score_mean_last10pct", "legacy eval/score_mean_last10pct"),
+    ("eval/return_mean", "legacy eval/return_mean"),
+)
+
+
+def _finite(value) -> float | None:
+    try:
+        val = float(value)
+    except (TypeError, ValueError):
+        return None
+    return val if val == val else None  # drop NaN
+
+
+def get_eval_return(run) -> tuple[float | None, str]:
+    """The run's headline return, using one definition for every algorithm.
+
+    Before the unified evaluation protocol this column was filled from three
+    mutually incomparable sources (Dreamer's last-10%-of-frames summary, an
+    eval-env mean, or the best training episode). Now it is always openrlbenchmark's
+    own rule — the mean of the last 100 logged ``charts/episodic_return`` points
+    — which is exactly what `rlops` puts in its own comparison tables.
+
+    ``eval/final_return_mean`` is the trainer's precomputed version of the same
+    quantity and is preferred when present; the history scan is the fallback for
+    runs interrupted before the summary was written. Legacy keys come last and
+    are labelled in the Notes column.
     """
     summary = run.summary
 
-    for key in ("eval/score_mean_last10pct", "eval/return_mean"):
-        val = summary.get(key)
+    val = _finite(summary.get("eval/final_return_mean"))
+    if val is not None:
+        return val, ""
+
+    try:
+        history = run.history(keys=["charts/episodic_return"], pandas=False)
+        values = [
+            v
+            for v in (_finite(row.get("charts/episodic_return")) for row in history)
+            if v is not None
+        ]
+        if values:
+            recent = values[-SUMMARY_WINDOW:]
+            return sum(recent) / len(recent), ""
+    except Exception:
+        pass
+
+    for key, note in LEGACY_KEYS:
+        val = _finite(summary.get(key))
         if val is not None:
-            try:
-                if val == val:  # skip NaN
-                    return float(val), ""
-            except (TypeError, ValueError):
-                pass
+            return val, note
 
     try:
         history = run.history(keys=["train/episode_reward"], pandas=False)
         values = [
-            float(row["train/episode_reward"])
-            for row in history
-            if row.get("train/episode_reward") is not None
+            v
+            for v in (_finite(row.get("train/episode_reward")) for row in history)
+            if v is not None
         ]
         if values:
-            return max(values), "best train/episode_reward"
+            return max(values), "legacy best train/episode_reward"
     except Exception:
         pass
 
@@ -247,7 +438,8 @@ def parse_run(run, registry: list[ExperimentSpec]) -> ResultRow | None:
     return ResultRow(
         run_name=run.name,
         run_url=run_url,
-        environment=env_cfg.get("name") or "—",
+        # dm_control configs carry no `name` — fall back to the task id.
+        environment=env_cfg.get("name") or env_cfg.get("task") or "—",
         config=infer_experiment_config(config, registry),
         seed=trainer_cfg.get("seed"),
         frames=trainer_cfg.get("total_frames"),

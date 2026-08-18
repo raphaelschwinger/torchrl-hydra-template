@@ -1,0 +1,46 @@
+# Atari-100k benchmark protocol: gym-wrapper preprocessing (max-and-skip,
+# episodic life), no sticky actions, 84x84 grayscale, 4-frame stack.
+#
+# Switch game with a single override — atari100k_eval.yaml follows
+# automatically:
+#   python src/train.py experiment=rainbow/atari100k environment.task=Breakout
+task: Jamesbond
+name: ALE/${environment.task}-v5
+env_id: ${environment.task}-v5
+action_repeat: 4
+gym_backend: gymnasium
+gym_kwargs:
+  frame_skip: 1                   # raw ALE frames; MaxAndSkipEnv does the skipping
+  repeat_action_probability: 0.0  # Atari-100k protocol: no sticky actions
+  disable_env_checker: true
+  from_pixels: true
+  pixels_only: false
+  categorical_action_encoding: false
+
+# Evaluation keeps true game-over episodes (no EpisodicLifeEnv) and unclipped
+# rewards (no SignTransform).
+#
+# `name` interpolates the TRAIN env's task on purpose: composed under
+# `environment@eval_environment`, `${environment.task}` resolves against the
+# config root, so `environment.task=Breakout` moves both envs at once. The
+# literal `task` above is inert in that position — it exists so this config
+# still resolves standalone (`python src/eval.py environment=atari100k_eval`).
+gymnasium_wrappers:
+  - _target_: src.environments.atari_wrappers.MaxAndSkipEnv
+    skip: 4
+
+transforms:
+  - _target_: torchrl.envs.NoopResetEnv
+    noops: 30
+    random: true
+  - _target_: torchrl.envs.ToTensorImage
+  - _target_: torchrl.envs.GrayScale
+  - _target_: torchrl.envs.Resize
+    w: 84
+    h: 84
+  - _target_: torchrl.envs.CatFrames
+    N: 4
+    dim: -3
+  - _target_: torchrl.envs.RewardSum
+  - _target_: torchrl.envs.StepCounter
+    max_steps: 27000

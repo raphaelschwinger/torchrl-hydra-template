@@ -1,0 +1,51 @@
+# @package _global_
+# PPO on Atari-100k JamesBond: 100k agent steps (400k raw frames at
+# frame-skip 4), no sticky actions. cleanRL ppo_atari.py with num_epochs
+# raised to 10 for more sample reuse at the short budget (~97 rollouts).
+# Run another game with: environment.task=Breakout
+defaults:
+  - override /algorithm: ppo
+  - override /algorithm/policy: nature_cnn_categorical
+  - override /environment: ale
+  - override /evaluation: ale
+  - override /trainer: gpu
+  - override /logger: wandb
+  - _self_
+
+environment:
+  task: Jamesbond
+  gym_kwargs:
+    repeat_action_probability: 0.0  # Atari-100k protocol: no sticky actions
+# Atari-100k episode counts on top of the `ale` protocol: this experiment runs
+# the 100k budget, so it is compared against bbf/atari100k and
+# dreamer/atari100k and takes the same 10-point curve plus the official
+# 100-episode final measurement. `configs/evaluation/ale.yaml` keeps its lighter
+# defaults for the full-length runs (dqn/ale), where 10k-step evaluation would
+# mean a thousand eval points.
+#
+# `canonical_source: train` stays: the `ale` stack runs training episodes to
+# true game over (EndOfLifeTransform does not set `done`) and places
+# SignTransform after RewardSum, so the training return is already an
+# unclipped score.
+evaluation:
+  every_n_steps: 10_000
+  final_num_episodes: 100
+  eval_environment:
+    gym_kwargs:
+      repeat_action_probability: 0.0
+
+# Pixel observations and the cleanRL Atari schedule. These are properties of
+# the task and budget, not of PPO, so they live here rather than in
+# configs/algorithm/ppo.yaml.
+algorithm:
+  obs_key: pixels
+  lr: 2.5e-4
+  mini_batch_size: 256
+  clip_epsilon: 0.1
+  entropy_coeff: 0.01
+  frames_per_batch: 1024  # 8 envs x 128 steps
+
+trainer:
+  total_frames: 100_000
+  num_envs: 8
+  log_every_n_steps: 5_000

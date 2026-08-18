@@ -1,0 +1,23 @@
+# @package _global_
+# BBF on Atari-100k JamesBond at the official config's replay_ratio=2.
+# Flagship replay_ratio=8 variant: configs/experiment/bbf/atari100k_rr8.yaml.
+# Run another game with: environment.task=Breakout
+defaults:
+  - override /algorithm: bbf
+  - override /environment: atari100k
+  - override /evaluation: atari100k
+  - override /trainer: gpu
+  - override /logger: wandb
+  - _self_
+
+environment:
+  task: Jamesbond
+
+algorithm:
+  # >= trainer.total_frames, so the replay ring never wraps.
+  replay_capacity: 105_000
+
+trainer:
+  total_frames: 100_000
+  seed: 1
+  num_envs: 1              # BBF requires a single contiguous stream

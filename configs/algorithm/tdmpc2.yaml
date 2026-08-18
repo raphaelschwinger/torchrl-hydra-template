@@ -1,0 +1,72 @@
+# TD-MPC2 (single-task, state observations). Mirrors the keyword defaults of
+# src.algorithms.tdmpc2.TDMPC2Algorithm, which reproduce the upstream
+# https://github.com/nicklashansen/tdmpc2 config at model_size=5.
+#
+# Unlike dqn/ddpg there are no `_partial_` network factories: the world-model
+# subnetworks are architecturally coupled (shared latent_dim/simnorm/num_bins)
+# and official-checkpoint compatibility pins the architecture, so all
+# architecture knobs are plain scalars.
+_target_: src.algorithms.tdmpc2.TDMPC2Algorithm
+
+obs_key: observation
+
+# --- Architecture (model_size=5 preset, ~5M params) ---
+enc_dim: 256
+mlp_dim: 512
+latent_dim: 512
+num_enc_layers: 2
+num_q: 5
+dropout: 0.01
+simnorm_dim: 8
+
+# --- Discrete regression (two-hot) ---
+num_bins: 101
+vmin: -10.0
+vmax: 10.0
+
+# --- Policy prior ---
+log_std_min: -10.0
+log_std_max: 2.0
+entropy_coef: 1e-4
+
+# --- Planning (MPPI) ---
+mpc: true
+horizon: 3
+iterations: 6
+num_samples: 512
+num_elites: 64
+num_pi_trajs: 24
+min_std: 0.05
+max_std: 2.0
+temperature: 0.5
+
+# --- Optimisation ---
+lr: 3e-4
+enc_lr_scale: 0.3
+grad_clip_norm: 20.0
+tau: 0.01
+rho: 0.5
+batch_size: 256
+consistency_coef: 20.0
+reward_coef: 0.1
+value_coef: 0.1
+
+# --- Discount heuristic ---
+# `episode_length` (decision steps per episode) is a property of the env's
+# transform stack, so it is set per experiment, not here.
+discount_denom: 5
+discount_min: 0.95
+discount_max: 0.995
+
+# --- Replay ---
+buffer_size: 1_000_000
+buffer_device: cpu
+
+# --- Data collection / learning schedule ---
+frames_per_batch: 50
+init_random_frames: 2500
+num_updates: 50
+pretrain_updates: null
+
+# --- Misc ---
+compile: false

@@ -19,7 +19,7 @@ transitions.
   $a = \arg\max_a Q(s, a; \theta)$. ε is linearly annealed over `annealing_frames`.
 - **Warm-up phase.** Random (or uniformly random) collection for `init_random_frames`
   before any gradient step, so the replay buffer is non-empty.
-- **Atari variant** (`experiment=dqn/pong`): pixel observations via `NatureDQN` CNN,
+- **Atari variant** (`experiment=dqn/ale`): pixel observations via `NatureDQN` CNN,
   frame stacking, reward clipping, and a separate eval environment without train-only
   transforms (`EndOfLifeTransform`, `SignTransform`, `VecNorm`).
 
@@ -45,13 +45,14 @@ transitions.
 |----------|------|
 | Algorithm | [`dqn.py`](dqn.py) |
 | CartPole HPs | [`configs/algorithm/dqn.yaml`](../../../configs/algorithm/dqn.yaml) |
-| Atari HPs | [`configs/algorithm/dqn_atari.yaml`](../../../configs/algorithm/dqn_atari.yaml) |
-| CartPole experiment | [`configs/experiment/dqn/cartpole.yaml`](../../../configs/experiment/dqn/cartpole.yaml) |
-| Pong experiment | [`configs/experiment/dqn/pong.yaml`](../../../configs/experiment/dqn/pong.yaml) |
+| Atari network | [`configs/algorithm/network/nature_dqn.yaml`](../../../configs/algorithm/network/nature_dqn.yaml) |
+| CartPole experiment | [`configs/experiment/dqn/gym.yaml`](../../../configs/experiment/dqn/gym.yaml) |
+| Pong experiment | [`configs/experiment/dqn/ale.yaml`](../../../configs/experiment/dqn/ale.yaml) |
 
 ```shell
-python src/train.py experiment=dqn/cartpole
-python src/train.py experiment=dqn/pong
+python src/train.py experiment=dqn/gym
+python src/train.py experiment=dqn/ale
+python src/train.py experiment=dqn/ale environment.task=Breakout
 ```
 
 ### Mapping pseudocode → code
@@ -73,5 +74,4 @@ Reference implementations: [torchrl SOTA DQN CartPole](https://github.com/pytorc
 
 | Run | Environment | Config | Seed | Frames | Eval return | Notes |
 |-----|-------------|--------|------|--------|-------------|-------|
-| [dqn_atari_pong_train_2026-05-07_20-44-57](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/mcy6j9e7) | ALE/Pong-v5 | `experiment=dqn/pong` | 42 | 40,000,100 | 21.0 | best train/episode_reward |
-| [dqn_cartpole_2026-05-12_08-17-18](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/33w09b2o) | CartPole-v1 | `experiment=dqn/cartpole` | 42 | 500,100 | 500.0 | best train/episode_reward |
+| — | — | — | — | — | — | No finished runs tagged ``template`` yet — see [W&B table](https://wandb.ai/LatentLab/torchrl-hydra-template/table) |

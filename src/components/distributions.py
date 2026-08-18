@@ -1,5 +1,8 @@
 """
 This file is from the R2Dreamer Repository: https://github.com/NM512/r2dreamer
+
+Changes: symlog/symexp moved to src.components.math (shared with TD-MPC2);
+unused Bound wrapper and normal_std_fixed factory removed.
 """
 
 import torch
@@ -7,14 +10,7 @@ from torch import distributions as torchd
 from torch.nn import functional as F
 
 from src.algorithms.dreamer.tools import to_f32, to_i32
-
-
-def symlog(x):
-    return torch.sign(x) * torch.log1p(torch.abs(x))
-
-
-def symexp(x):
-    return torch.sign(x) * torch.expm1(torch.abs(x))
+from src.components.math import symexp, symlog  # noqa: F401  (re-exported: dreamer uses dists.symlog)
 
 
 class OneHotDist(torchd.one_hot_categorical.OneHotCategorical):
@@ -203,41 +199,11 @@ class SymlogDist:
         return -loss  # (...)
 
 
-class Bound:
-    def __init__(self, dist):
-        super().__init__()
-        self._dist = dist
-
-    def __getattr__(self, name):
-        return getattr(self._dist, name)
-
-    def entropy(self):
-        return self._dist.entropy()
-
-    @property
-    def mode(self):
-        out = self._dist.mean
-        return out / torch.clip(torch.abs(out), min=1.0).detach()
-
-    def sample(self, sample_shape=()):
-        out = self._dist.rsample(sample_shape)
-        return out / torch.clip(torch.abs(out), min=1.0).detach()
-
-    def log_prob(self, x):
-        return self._dist.log_prob(x)
-
-
 def bounded_normal(x, min_std, max_std, **kwargs):
     mean, std = torch.chunk(x, 2, dim=-1)
     std = (max_std - min_std) * torch.sigmoid(std + 2.0) + min_std
-    # NOTE: Bound can be added
     dist = torchd.normal.Normal(torch.tanh(to_f32(mean)), to_f32(std))
     return torchd.independent.Independent(dist, 1)
-
-
-def normal_std_fixed(mean, std, **kwargs):
-    dist = torchd.normal.Normal(to_f32(mean), to_f32(std))
-    return Bound(torchd.independent.Independent(dist, 1))
 
 
 def onehot(mean, unimix_ratio, **kwargs):

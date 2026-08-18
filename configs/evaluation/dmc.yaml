@@ -1,0 +1,18 @@
+# DeepMind Control Suite.
+#
+# Matches TD-MPC2 upstream (github.com/nicklashansen/tdmpc2): evaluate every
+# 10k agent steps on 10 episodes with the deterministic policy, and report the
+# evaluation score. The dmc stack has no train-only transforms, so the eval env
+# is a fresh instance of the same config.
+#
+# Periodic evaluation costs real time here (MPPI planning dominates), so lower
+# the cadence if you only need a coarse curve:
+#   python src/train.py experiment=tdmpc2/dmc evaluation.every_n_steps=50_000
+defaults:
+  - none
+  - _self_
+
+every_n_steps: 10_000
+num_episodes: 10
+final_num_episodes: 10
+canonical_source: eval

@@ -1,0 +1,20 @@
+# Atari-100k protocol, evaluated on the experiment's *own* env stack.
+#
+# Identical to `atari100k` in cadence, episode counts and canonical source; the
+# only difference is that `eval_environment` stays null, so the eval env is a
+# fresh instance of whatever the experiment configures for training.
+#
+# For DreamerV3: its Atari-100k stack is 64x64 RGB with an `image` key and no
+# frame stack (the RSSM carries history), which the shared `atari100k_eval`
+# stack — grayscale, 84x84, frame-stacked — cannot serve. That stack is also
+# already eval-clean (`terminal_on_life_loss: false`, no reward clipping), so a
+# fresh instance of it *is* the evaluation protocol; only the exploration policy
+# and the episode accounting differ from training.
+#
+# The alternative is promoting the inline stack to
+# `configs/environment/atari100k_dreamer{,_eval}.yaml`. Deliberately not done:
+# the two stacks would be byte-identical, and the duplication is what goes stale.
+defaults:
+  - atari100k
+  - override /environment@eval_environment: null
+  - _self_

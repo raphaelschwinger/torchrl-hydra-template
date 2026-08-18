@@ -1,0 +1,69 @@
+# @package _global_
+# PPO on DMC cheetah-run at 1M frames — cleanRL ppo_continuous_action.py
+# hyperparameters (https://docs.cleanrl.dev/rl-algorithms/ppo/).
+# Run another task with: environment.task=walker-walk
+defaults:
+  - override /algorithm: ppo
+  - override /environment: dmc
+  - override /evaluation: dmc
+  - override /logger: wandb
+  - _self_
+
+# `evaluation: dmc` — the same protocol as tdmpc2/dmc and dreamer/dmc (every 10k
+# agent steps, 10 episodes, deterministic policy, eval canonical), so the three
+# curves on a task are read off one axis. A completed training episode is a true
+# score here too (no reward clipping, no life-loss truncation), but it is a
+# *stochastic*-policy score, which is not what the other two report.
+#
+# Cost: ~1M extra env steps across this 1M-frame run. Lower the cadence if that
+# matters: `evaluation.every_n_steps=50_000`.
+#
+# Caveat: VecNorm running stats (below) are not checkpointed or shared, so the
+# eval env starts with fresh statistics. DMC observations are well-scaled and
+# the stats converge within the first episodes — measured at 1M steps on
+# cheetah-run, eval sits ~550 against a ~400 training stream, the expected
+# deterministic-policy gap rather than a normalisation artefact.
+evaluation:
+  summary_window: 100
+
+environment:
+  task: cheetah-run
+  # No FrameSkipTransform below, so one agent step is one sim step. This must
+  # stay in sync with the transform list or `frames` is wrong.
+  action_repeat: 1
+  # PPO-specific observation handling, so it lives here rather than in the
+  # shared dmc.yaml stack. VecNorm + ClipTransform implement the cleanRL /
+  # "37 details" observation normalization + clipping tricks (values match the
+  # torchrl SOTA PPO reference). Caveat: VecNorm running stats are not
+  # checkpointed, so eval envs start with fresh statistics.
+  # The action ClipTransform mirrors gym's ClipAction: the policy's Normal is
+  # unbounded and the stored action/log-prob stay unclipped, but the env
+  # receives actions clipped to the [-1, 1] action spec.
+  # Reward normalization is deliberately omitted: DMC rewards are already in
+  # [0, 1], and VecNorm on rewards would subtract the mean (not cleanRL's
+  # return-based scaling), which can change the optimal policy.
+  # No FrameSkipTransform: PPO runs at the native 1000-step episode length.
+  transforms:
+    - _target_: torchrl.envs.CatTensors
+      in_keys: [position, velocity]
+      out_key: observation
+      del_keys: true
+    - _target_: torchrl.envs.DoubleToFloat
+    - _target_: torchrl.envs.VecNorm
+      in_keys: [observation]
+      decay: 0.99999
+      eps: 0.01
+    - _target_: torchrl.envs.ClipTransform
+      in_keys: [observation]
+      low: -10.0
+      high: 10.0
+    - _target_: torchrl.envs.ClipTransform
+      in_keys_inv: [action]
+      low: -1.0
+      high: 1.0
+    - _target_: torchrl.envs.InitTracker
+    - _target_: torchrl.envs.StepCounter
+    - _target_: torchrl.envs.RewardSum
+
+# trainer/default.yaml already provides cpu / 1M frames / 1 env / seed 42;
+# algorithm.anneal_frames follows trainer.total_frames automatically.

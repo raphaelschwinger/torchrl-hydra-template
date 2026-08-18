@@ -11,7 +11,7 @@ replay_buffer:
 
 actor_network:
   _partial_: true
-  _target_: src.networks.make_mlp_ddpg_actor
+  _target_: src.components.networks.make_mlp_ddpg_actor
   num_cells: [256, 256]
   # `torch.nn.ReLU` via `_target_` would instantiate a module; MLP needs the class.
   activation_class:
@@ -20,7 +20,7 @@ actor_network:
 
 value_network:
   _partial_: true
-  _target_: src.networks.make_mlp_ddpg_critic
+  _target_: src.components.networks.make_mlp_ddpg_critic
   num_cells: [256, 256]
   activation_class:
     _target_: hydra.utils.get_class

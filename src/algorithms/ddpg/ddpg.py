@@ -35,7 +35,7 @@ from torchrl.modules import OrnsteinUhlenbeckProcessModule, TanhModule, ValueOpe
 from torchrl.objectives import DDPGLoss, SoftUpdate, group_optimizers
 
 from src.algorithms.base import BaseAlgorithm, CollectorConfig, TrainingState
-from src.networks import make_mlp_ddpg_actor, make_mlp_ddpg_critic
+from src.components.networks import make_mlp_ddpg_actor, make_mlp_ddpg_critic
 
 
 class DDPGAlgorithm(BaseAlgorithm):

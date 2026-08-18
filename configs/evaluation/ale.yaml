@@ -1,0 +1,18 @@
+# Arcade Learning Environment, standard (full-length) protocol.
+#
+# `canonical_source: train` is legitimate here: torchrl's EndOfLifeTransform
+# writes an `end-of-life` key but deliberately does *not* set `done` ("it should
+# not instruct the env to reset"), so training episodes already run to true game
+# over, and ale.yaml places SignTransform after RewardSum so the logged return
+# is the unclipped score. That makes `charts/episodic_return` directly
+# comparable to CleanRL / openrlbenchmark Atari curves.
+#
+# ale_eval drops SignTransform and VecNorm, so evaluation measures true game
+# scores on un-normalised observations.
+defaults:
+  - none
+  - override /environment@eval_environment: ale_eval
+  - _self_
+
+final_num_episodes: 10
+canonical_source: train

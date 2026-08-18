@@ -1,0 +1,27 @@
+# @package algorithm
+# Shared Nature-CNN trunk + linear policy/value heads for discrete control on
+# pixel observations (cleanRL ppo_atari.py agent). Pair with
+# `algorithm.obs_key: pixels`.
+#
+# The heads take no `num_cells`: cleanRL maps trunk features to logits/value
+# with a single linear layer. Because Hydra merges dicts, these must be swapped
+# as a whole group option — patching only `_target_` would leave the MLP
+# variant's `num_cells: [64, 64]` behind and silently add hidden layers.
+common_network:
+  _partial_: true
+  _target_: src.components.networks.make_nature_cnn_trunk
+  num_cells_cnn: [32, 64, 64]
+  kernel_sizes: [8, 4, 3]
+  strides: [4, 2, 1]
+  out_features: 512
+  activation_class:
+    _target_: hydra.utils.get_class
+    path: torch.nn.ReLU
+
+actor_network:
+  _partial_: true
+  _target_: src.components.networks.make_categorical_head
+
+value_network:
+  _partial_: true
+  _target_: src.components.networks.make_value_head

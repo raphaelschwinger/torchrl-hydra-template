@@ -1,9 +1,0 @@
-# @package _global_
-logger:
-  - _target_: src.callbacks.logger.WandBLogger
-    project: torchrl-hydra-template
-    entity: latentlab
-    name: ${hydra:runtime.choices.algorithm}_${env_id}_${environment.benchmark}_${model_size}_${now:%Y-%m-%d_%H-%M-%S}
-    tags: []
-    mode: online
-    save_dir: ${paths.log_dir}/wandb/

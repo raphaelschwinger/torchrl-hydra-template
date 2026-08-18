@@ -77,24 +77,21 @@ an EMA target encoder trained on randomly-translated observations.
 | Algorithm config (R2-Dreamer) | [`configs/algorithm/r2dreamer.yaml`](../../../configs/algorithm/r2dreamer.yaml) |
 | Algorithm config (DreamerPro) | [`configs/algorithm/dreamerpro.yaml`](../../../configs/algorithm/dreamerpro.yaml) |
 | Model size presets | [`configs/algorithm/dreamer/`](../../../configs/algorithm/dreamer/) |
-| Atari environment | [`configs/environment/atari_dreamer.yaml`](../../../configs/environment/atari_dreamer.yaml) |
-| Breakout experiment | [`configs/experiment/dreamer/breakout.yaml`](../../../configs/experiment/dreamer/breakout.yaml) |
-| Atari100k experiment (default env: Jamesbond) | [`configs/experiment/dreamer/atari100k.yaml`](../../../configs/experiment/dreamer/atari100k.yaml) |
-| Atari100k batch-32 ablation | [`configs/experiment/dreamer/atari100k_batch32.yaml`](../../../configs/experiment/dreamer/atari100k_batch32.yaml) |
-| Qbert experiment | [`configs/experiment/dreamer/qbert.yaml`](../../../configs/experiment/dreamer/qbert.yaml) |
+| Atari environment | [`configs/environment/atari100k.yaml`](../../../configs/environment/atari100k.yaml) |
+| Experiment (DreamerV3 preprocessing lives here) | [`configs/experiment/dreamer/atari100k.yaml`](../../../configs/experiment/dreamer/atari100k.yaml) |
 
 ```shell
 # Standard DreamerV3 (pixel reconstruction)
 python src/train.py experiment=dreamer/atari100k
+
+# Another game
+python src/train.py experiment=dreamer/atari100k environment.task=Breakout
 
 # R2-Dreamer (Barlow Twins, decoder-free)
 python src/train.py experiment=dreamer/atari100k algorithm=r2dreamer
 
 # DreamerPro (prototypical assignment, decoder-free)
 python src/train.py experiment=dreamer/atari100k algorithm=dreamerpro
-
-# Different game (any config field can be overridden from the CLI)
-python src/train.py experiment=dreamer/atari100k env_id=hero environment.name=ALE/Hero-v5
 ```
 
 ### Model size presets
@@ -111,7 +108,7 @@ interpolation variables consumed by the RSSM, encoder, decoder, actor, and criti
 | `200m` | 8192    | 1024               | 64      | 64         | ~200M   |
 | `400m` | 12288   | 1536               | 64      | 64         | ~400M   |
 
-Experiments default to `200m`. Override with e.g. `+algorithm/dreamer=50m`.
+Experiments default to `200m`. Override with e.g. `algorithm/dreamer=50m`.
 
 ### Mapping pseudocode → code
 
@@ -185,22 +182,65 @@ runtime branching cost, compiled or not.
 
 ## Experimental results
 
-**Evaluation protocol.** Following the official DreamerV3 code (`run.steps: 1.1e5`),
-the Atari100k experiment configs train for 110k agent steps — 10 % past the
-benchmark budget of 100k steps (400k game frames) stated in the paper. The
-end-of-run summary metrics stay paper-comparable: `eval/score_last` and
-`eval/score_mean_last10pct` are cut off at `algorithm.benchmark_frames`
-(default 400k game frames), i.e. the last episode within the budget and the mean
-over episodes in its final 10 % (360k–400k frames). Episodes past the budget
-appear only on the `episode/score` curve, for debugging and run-to-run comparison. Some runs below don"t have any eval metrics yet so they are not listed, replace them with new ones in the future.
+**Evaluation protocol.** The Atari-100k experiment uses
+`evaluation: atari100k_native` — the standard Atari-100k protocol (eval every
+10k agent steps on 10 episodes, 100 episodes at the end, `canonical_source:
+eval`) run on a fresh instance of this experiment's *own* env stack, since the
+shared grayscale, frame-stacked `atari100k_eval` cannot serve DreamerV3's 64x64
+RGB `image` observations. That stack sets `terminal_on_life_loss: false` with no
+reward clipping, so its returns are true game scores either way; measuring from
+rollouts is what makes `charts/episodic_return` mean the same thing here as it
+does for BBF and Rainbow.
+
+Both experiments set `evaluation.policy: explore`, so rollouts use the sampled
+actor. Official DreamerV3 has no argmax path at all — it acts from the sampled
+actor everywhere, and that is what its published scores measure. The argmax
+policy remains reachable as `evaluation.policy: eval`, untested and prone to
+looping in the deterministic ALE.
+
+Note for recurrent policies generally: eval rollouts advance with
+`env.step_mdp`, which preserves the RSSM state (`stoch` / `deter` /
+`prev_action`) that `DreamerPolicy` keeps at the tensordict root. Advancing with
+`td["next"]` instead drops it and the policy silently acts from a fresh latent
+at every step — that bug scored 0.0 across 100 Jamesbond episodes against a
+~250 training stream before it was fixed.
+
+**Benchmarks.** The paper reports dm_control on two suites, and both are
+implemented: `experiment=dreamer/atari100k` (pixels, 200M preset) and
+`experiment=dreamer/dmc` (DMC **Proprio** — state observations, 12M preset,
+`encoder/decoder mlp_keys: observation`, `cnn_keys: '$^'`). The proprio stack is
+shared with `ppo/dmc` and `tdmpc2/dmc`, so the three are directly comparable on
+a task. DMC Vision would additionally need `from_pixels` plumbed through
+`_make_dmc_env` and a working MUJOCO_GL renderer.
+
+**Video diagnostics.** `video/world_model` (truth / reconstruction / open-loop
+tile) and `video/agent` (gameplay) are logged on their own `video/frame` axis at
+`algorithm.world_model_video_log_every` / `agent_video_log_every` environment
+frames; `0` disables either. Both are automatically skipped on stacks with no
+image observation — on DMC Proprio the decoder has no CNN head, so there is
+nothing to reconstruct and nothing to record.
+
+The official DreamerV3 code trains 10 % past the Atari100k budget
+(`run.steps: 1.1e5`) and relies on `summary_max_step` to cut the headline
+number back to 100k agent steps. This template's evaluation stream is
+already the canonical source (`atari100k_native`, inherited
+`canonical_source: eval`), so the Atari100k experiment trains for exactly
+100k agent steps (400k game frames) and reports `eval/final_return_mean`
+straight off the last `evaluation.summary_window` (100) eval episodes — no
+`summary_max_step` trimming needed.
+
+Older runs in the table below predate this protocol (110k agent steps,
+`eval/score_mean_last10pct`); `scripts/update_algo_results.py` still reads
+that key but labels it `legacy` in the Notes column. Replace them with new
+runs.
 
 **Live W&B table (canonical):** [LatentLab/torchrl-hydra-template — Table](https://wandb.ai/LatentLab/torchrl-hydra-template/table)
 
 | Run | Environment | Config | Seed | Frames | Eval return | Notes |
 |-----|-------------|--------|------|--------|-------------|-------|
-| [dreamer_hero_atari100k_200m_2026-07-09_10-35-35](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/8m6v58pk) | ALE/Hero-v5 | `experiment=dreamer/atari100k env_id=hero environment.name=ALE/Hero-v5` | 42 | 110,000 | 10,253.3 | — |
-| [dreamer_hero_atari100k_200m_2026-07-09_12-18-11](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/51h2g461) | ALE/Hero-v5 | `experiment=dreamer/atari100k env_id=hero environment.name=ALE/Hero-v5` | 45 | 110,000 | 12,391.2 | — |
-| [dreamer_hero_atari100k_200m_2026-07-09_12-18-11](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/p9fwwjdd) | ALE/Hero-v5 | `experiment=dreamer/atari100k env_id=hero environment.name=ALE/Hero-v5` | 44 | 110,000 | 6,331.2 | — |
-| [dreamer_hero_atari100k_200m_2026-07-09_12-18-11](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/udxi7rsc) | ALE/Hero-v5 | `experiment=dreamer/atari100k env_id=hero environment.name=ALE/Hero-v5` | 43 | 110,000 | 6,920.5 | — |
-| [dreamerpro_hero_atari100k_200m_2026-07-09_11-16-03](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/7ydjbg18) | ALE/Hero-v5 | `experiment=dreamer/atari100k env_id=hero environment.name=ALE/Hero-v5` | 44 | 110,000 | 2,983.5 | DreamerPro |
-| [r2dreamer_hero_atari100k_200m_2026-07-08_14-10-27](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/4sz2koi1) | ALE/Hero-v5 | `experiment=dreamer/atari100k env_id=hero environment.name=ALE/Hero-v5` | 42 | 100,000 | 4,598.8 | R2Dreamer |
+| [dreamer_Jamesbond_atari100k_200m_2026-08-03_12-04-31](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/wwt2hl3y) | ALE/Jamesbond-v5 | `experiment=dreamer/atari100k environment.task=Jamesbond` | 1 | 110,000 | 222.0 | — |
+| [dreamer_Jamesbond_atari100k_200m_2026-08-03_13-40-08](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/9o2v5b67) | ALE/Jamesbond-v5 | `experiment=dreamer/atari100k environment.task=Jamesbond` | 2 | 110,000 | 195.0 | — |
+| [dreamer_Jamesbond_atari100k_200m_2026-08-03_13-41-35](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/omlhkgde) | ALE/Jamesbond-v5 | `experiment=dreamer/atari100k environment.task=Jamesbond` | 3 | 110,000 | 168.5 | — |
+| [dreamer_cheetah-run_2026-08-03_20-44-09](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/7a2tmns6) | cheetah-run | `experiment=dreamer/dmc` | 1 | 1,000,000 | 687.0 | — |
+| [dreamer_cheetah-run_2026-08-03_23-05-17](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/qw6dmfpk) | cheetah-run | `experiment=dreamer/dmc` | 2 | 1,000,000 | 798.6 | — |
+| [dreamer_cheetah-run_2026-08-03_23-49-29](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/o556nwid) | cheetah-run | `experiment=dreamer/dmc` | 3 | 1,000,000 | 841.2 | — |

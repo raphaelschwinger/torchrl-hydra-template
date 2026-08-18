@@ -34,7 +34,7 @@ from torchrl.modules import EGreedyModule, QValueActor
 from torchrl.objectives import DQNLoss, HardUpdate
 
 from src.algorithms.base import BaseAlgorithm, CollectorConfig, TrainingState
-from src.networks import make_mlp_q_net
+from src.components.networks import make_mlp_q_net
 
 
 class DQNAlgorithm(BaseAlgorithm):

@@ -1,0 +1,12 @@
+# The training loop. Owns device placement, data collection, logging and
+# checkpointing — never anything that shifts the learning curve. Knobs that
+# affect learning live in configs/algorithm/; the measurement protocol (eval
+# cadence, episode count, eval env) lives in configs/evaluation/.
+_target_: src.trainers.StepTrainer
+
+accelerator: cpu        # "cpu" | "gpu" | "mps"
+devices: [0]            # GPU indices; ignored when accelerator=cpu
+seed: 42
+total_frames: 1_000_000
+num_envs: 1             # number of parallel environments
+log_every_n_steps: 1_000

@@ -1,0 +1,11 @@
+# Nature DQN ConvNet -> MLP head (Mnih et al. 2015) for pixel observations.
+# Pair with `algorithm.obs_key: pixels`.
+_partial_: true
+_target_: src.components.networks.NatureDQN
+num_cells_cnn: [32, 64, 64]
+kernel_sizes: [8, 4, 3]
+strides: [4, 2, 1]
+num_cells_mlp: [512]
+activation_class:
+  _target_: hydra.utils.get_class
+  path: torch.nn.ReLU

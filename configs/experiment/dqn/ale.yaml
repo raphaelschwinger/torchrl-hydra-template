@@ -1,0 +1,35 @@
+# @package _global_
+# DQN on Atari Pong — mirrors the torchrl SOTA reference
+# (https://github.com/pytorch/rl/blob/main/sota-implementations/dqn/dqn_atari.py).
+# Run another game with: environment.task=Breakout
+defaults:
+  - override /algorithm: dqn
+  - override /algorithm/network: nature_dqn
+  - override /environment: ale
+  - override /evaluation: ale
+  - override /trainer: gpu
+  - override /logger: wandb
+  - _self_
+
+environment:
+  task: Pong
+
+# Pixel observations and the 40M-frame Atari schedule. These are properties of
+# the task and budget, not of DQN, so they live here rather than in
+# configs/algorithm/dqn.yaml.
+algorithm:
+  obs_key: pixels
+  replay_buffer:
+    storage:
+      max_size: 1_000_000   # 84*84*4 uint8 -> ~28 GB; CPU-only
+  batch_size: 32
+  eps_end: 0.01
+  annealing_frames: 4_000_000
+  frames_per_batch: 1_600   # 16 envs x 100 steps
+  init_random_frames: 200_000
+  hard_update_freq: 10_000
+
+trainer:
+  total_frames: 40_000_100
+  num_envs: 16
+  log_every_n_steps: 10_000

@@ -3,7 +3,19 @@ logger:
   - _target_: src.callbacks.logger.WandBLogger
     project: torchrl-hydra-template
     entity: null                # set via env var WANDB_ENTITY or CLI override
-    name: ${hydra:runtime.choices.algorithm}_${hydra:runtime.choices.environment}_${now:%Y-%m-%d_%H-%M-%S}
+    name: ${run_name}           # override `run_name` in train.yaml or an experiment
     tags: []
-    mode: online                # "online" | "offline" | "disabled"
+    # "online" | "offline" | "disabled". Reads WANDB_MODE so the standard env
+    # var behaves as users expect: passing `mode=` to wandb.init() takes
+    # precedence over the environment, so a hardcoded `online` here would
+    # silently ignore `WANDB_MODE=offline` and push a throwaway run to the
+    # server. CLI overrides (`logger.0.mode=offline`) still win over both.
+    mode: ${oc.env:WANDB_MODE,online}
     save_dir: ${paths.log_dir}/wandb/
+    job_type: train
+    # Sidecar recording this run's W&B id next to the checkpoints, so
+    # `src/eval.py ... logger.0.resume=must` can append evaluation results to
+    # this run rather than creating a second one.
+    run_id_file: ${oc.select:checkpoint.save_dir,null}/wandb_run.json
+    run_id: null
+    resume: null

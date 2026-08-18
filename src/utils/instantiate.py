@@ -22,6 +22,58 @@ def build_loggers(logger_cfgs: ListConfig | list) -> list:
     return [instantiate(cfg) for cfg in logger_cfgs]
 
 
+def build_environment(env_cfg: DictConfig):
+    """Build an ``Environment`` from a flat env config.
+
+    Environments stay ``to_container`` + ``**kwargs`` (unlike algorithms, which
+    go through ``instantiate`` so their nested ``_partial_`` factories become
+    real callables).
+    """
+    from omegaconf import OmegaConf
+
+    from src.environments import Environment
+
+    kwargs = {
+        k: v
+        for k, v in OmegaConf.to_container(env_cfg, resolve=True).items()
+        if k != "_target_"
+    }
+    return Environment(**kwargs)
+
+
+def build_trainer(cfg: DictConfig) -> BaseTrainer:
+    """Compose algorithm, environments, loggers and callbacks into a trainer.
+
+    Shared by ``src/train.py`` and ``src/eval.py`` so the two entry points
+    cannot drift apart — they differ only in which stages they run.
+    """
+    from hydra.utils import get_class, instantiate
+
+    environment = build_environment(cfg.environment)
+
+    # The evaluation component owns the eval env stack; ``null`` there means
+    # "measure on the training env config" (a fresh instance of it).
+    eval_env_cfg = (cfg.get("evaluation") or {}).get("eval_environment")
+    eval_environment = (
+        build_environment(eval_env_cfg) if eval_env_cfg is not None else None
+    )
+
+    algorithm = instantiate(cfg.algorithm, device=None)  # Trainer sets device
+    loggers = build_loggers(cfg.get("logger") or [])
+
+    TrainerClass = get_class(cfg.trainer._target_)
+    trainer = TrainerClass(
+        cfg=cfg,
+        algorithm=algorithm,
+        environment=environment,
+        eval_environment=eval_environment,
+    )
+    trainer.callbacks = build_callbacks(
+        cfg.trainer, cfg.get("checkpoint") or {}, trainer, loggers
+    )
+    return trainer
+
+
 def build_callbacks(
     trainer_cfg: DictConfig,
     checkpoint_cfg: DictConfig,

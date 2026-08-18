@@ -15,6 +15,7 @@ dependencies = [
     "hydra-colorlog>=1.2.0",
     # Environments
     "gymnasium[classic-control,mujoco]>=0.29.0",
+    "dm-control>=1.0.0",  # DeepMind Control Suite (backend: dm_control)
     "ale-py>=0.9.0",
     "autorom[accept-rom-license]>=0.6.1",
     "torchvision>=0.18.0",  # Atari pixel transforms (Resize)
@@ -27,6 +28,7 @@ dependencies = [
     # Testing
     "pytest>=8.0.0",
     "pytest-timeout>=2.3.0",
+    "dm-control>=1.0.43",
     "pandas>=2.0.0",
 ]
 
