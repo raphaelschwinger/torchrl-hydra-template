@@ -64,6 +64,48 @@ def setup_console_log(logdir, filename="console.log"):
     return f
 
 
+#! Normalisation-layer dtype.
+#!
+#! DreamerV3 constructs its RMSNorm layers directly in bf16 rather than relying
+#! on autocast to cast them, so the two knobs are not independent: switching
+#! `amp` off without switching these to fp32 as well feeds fp32 activations into
+#! bf16 weights. `DreamerV3.__init__` therefore stamps `norm_dtype` onto every
+#! node of the config tree -- the same trick `_patch_devices` uses for the
+#! resolved device -- and every construction site reads it back through
+#! `norm_dtype()` below.
+NORM_DTYPES = {
+    "bfloat16": torch.bfloat16,
+    "float16": torch.float16,
+    "float32": torch.float32,
+}
+
+DEFAULT_NORM_DTYPE = "bfloat16"
+
+
+def patch_norm_dtype(cfg, name: str) -> None:
+    """Recursively stamp ``norm_dtype: <name>`` onto every node of a config."""
+    from omegaconf import DictConfig, open_dict
+
+    if name not in NORM_DTYPES:
+        raise ValueError(f"unknown norm_dtype {name!r}; choose from {sorted(NORM_DTYPES)}")
+    with open_dict(cfg):
+        cfg["norm_dtype"] = name
+        for key in list(cfg.keys()):
+            value = cfg[key]
+            if isinstance(value, DictConfig):
+                patch_norm_dtype(value, name)
+
+
+def norm_dtype(config=None):
+    """Resolve the dtype a normalisation layer should be constructed in."""
+    name = DEFAULT_NORM_DTYPE
+    if config is not None:
+        getter = getattr(config, "get", None)
+        if getter is not None:
+            name = getter("norm_dtype", DEFAULT_NORM_DTYPE) or DEFAULT_NORM_DTYPE
+    return NORM_DTYPES[str(name)]
+
+
 def to_np(x):
     return x.detach().cpu().numpy()
 

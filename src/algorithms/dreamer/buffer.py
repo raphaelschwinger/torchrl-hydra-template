@@ -25,6 +25,10 @@ class Buffer:
         #! is queued and served before uniform samples, so all new experience is
         #! trained on immediately at least once.
         self.online = bool(getattr(config, "online", True))
+        #! Pinned (page-locked) staging for the CPU->GPU copy of a sampled batch.
+        #! On by default (the published configuration); set false to measure what
+        #! the transfer costs without it.
+        self.pin_memory = bool(getattr(config, "pin_memory", True))
         self._seq_len = self.batch_length + 1
         self._online_queue: deque[tuple[int, int]] = deque()  # (per-env start step, env)
         self._steps_per_env = 0        # per-env transitions added so far
@@ -95,10 +99,10 @@ class Buffer:
             index[:n_online] = online_idx.to(dtype=index.dtype, device=index.device)
             index = index.reshape(-1)
         src_dev = sample_td.device
-        if src_dev.type == "cpu" and self.device.type == "cuda":
+        if src_dev.type == "cpu" and self.device.type == "cuda" and self.pin_memory:
             sample_td = sample_td.pin_memory().to(self.device, non_blocking=True)
         elif src_dev != self.device:
-            sample_td = sample_td.to(self.device, non_blocking=True)
+            sample_td = sample_td.to(self.device, non_blocking=self.pin_memory)
         if "image" in sample_td.keys():  #! restore float32 for the model
             sample_td["image"] = sample_td["image"].float() / 255.0
         #! First timestep of each sequence is used only to warm-start RSSM state.

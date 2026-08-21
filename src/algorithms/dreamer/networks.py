@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from torch import nn
 
 import src.components.distributions as dists  #! R2Dreamer used bare `import distributions as dists`
-from src.algorithms.dreamer.tools import weight_init_  #!
+from src.algorithms.dreamer.tools import norm_dtype, weight_init_  #!
 
 
 class LambdaLayer(nn.Module):
@@ -259,6 +259,7 @@ class ConvEncoder(nn.Module):
             int(config.depth) * int(mult) for mult in list(config.mults)
         )
         self.kernel_size = int(config.kernel_size)
+        norm_dt = norm_dtype(config)  #!
         in_dim = input_ch
         layers = []
         for i, depth in enumerate(self.depths):
@@ -273,7 +274,7 @@ class ConvEncoder(nn.Module):
             )
             layers.append(nn.MaxPool2d(2, 2))
             if config.norm:
-                layers.append(RMSNorm2D(depth, eps=1e-04, dtype=torch.bfloat16))
+                layers.append(RMSNorm2D(depth, eps=1e-04, dtype=norm_dt))
             layers.append(act())
             in_dim = depth
             h, w = h // 2, w // 2
@@ -310,16 +311,17 @@ class ConvDecoder(nn.Module):
         self.bspace = int(config.bspace)
         self.kernel_size = int(config.kernel_size)
         self.units = int(config.units)
+        norm_dt = norm_dtype(config)  #!
         u, g = math.prod(self.min_shape), self.bspace
         self.sp0 = BlockLinear(deter, u, g)
         self.sp1 = nn.Sequential(
             nn.Linear(flat_stoch, 2 * self.units),
-            nn.RMSNorm(2 * self.units, eps=1e-04, dtype=torch.bfloat16),
+            nn.RMSNorm(2 * self.units, eps=1e-04, dtype=norm_dt),
             act(),
         )
         self.sp2 = nn.Linear(2 * self.units, math.prod(self.min_shape))
         self.sp_norm = nn.Sequential(
-            nn.RMSNorm(self.depths[-1], eps=1e-04, dtype=torch.bfloat16), act()
+            nn.RMSNorm(self.depths[-1], eps=1e-04, dtype=norm_dt), act()
         )
         layers = []
         in_dim = self.depths[-1]
@@ -328,7 +330,7 @@ class ConvDecoder(nn.Module):
             layers.append(
                 Conv2dSamePad(in_dim, depth, self.kernel_size, stride=1, bias=True)
             )
-            layers.append(RMSNorm2D(depth, eps=1e-04, dtype=torch.bfloat16))
+            layers.append(RMSNorm2D(depth, eps=1e-04, dtype=norm_dt))
             layers.append(act())
             in_dim = depth
         layers.append(nn.Upsample(scale_factor=2, mode="nearest"))
@@ -394,6 +396,7 @@ class MLP(nn.Module):
         act = getattr(torch.nn, config.act)
         self._symlog_inputs = bool(config.symlog_inputs)
         self._device = torch.device(config.device)
+        norm_dt = norm_dtype(config)  #!
         self.layers = nn.Sequential()
         for i in range(config.layers):
             self.layers.add_module(
@@ -401,7 +404,7 @@ class MLP(nn.Module):
             )
             self.layers.add_module(
                 f"{config.name}_norm{i}",
-                nn.RMSNorm(config.units, eps=1e-04, dtype=torch.bfloat16),
+                nn.RMSNorm(config.units, eps=1e-04, dtype=norm_dt),
             )
             self.layers.add_module(f"{config.name}_act{i}", act())
             inp_dim = config.units

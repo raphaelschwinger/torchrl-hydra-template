@@ -20,6 +20,7 @@ buffer_config:
   batch_size: 16
   batch_length: 64
   online: true    # official DreamerV3 replay.online: fresh segments are always trained on once before uniform sampling resumes
+  pin_memory: true # stage the sampled batch in page-locked host memory so the CPU->GPU copy is async
   max_size: 5e6
   storage_device: cpu #! Keep Replay Buffer on CPU (Mabe use GPU on Kiel)
   device: ${trainer.accelerator}
@@ -33,7 +34,12 @@ dreamer_config:
   imag_horizon: 15
   horizon: 333
   lamb: 0.95
-  compile: True
+  compile: True   # torch.compile(mode="reduce-overhead") on the gradient step (captures CUDA graphs)
+  # Mixed precision. NOT independent of the norm layers: they are constructed in
+  # bf16 rather than wrapped in autocast, so `amp` also selects their dtype
+  # (see tools.patch_norm_dtype). Turning it off is therefore not
+  # semantics-preserving.
+  amp: True
   log_grads: False
   device: ${trainer.accelerator}
 

@@ -10,29 +10,32 @@ from torch import nn
 
 import src.components.distributions as dists  #! R2Dreamer used bare `import distributions as dists`
 from src.algorithms.dreamer.networks import BlockLinear, LambdaLayer  #!
-from src.algorithms.dreamer.tools import rpad, weight_init_  #!
+from src.algorithms.dreamer.tools import norm_dtype, rpad, weight_init_  #!
 
 
 class Deter(nn.Module):
 
-    def __init__(self, deter, stoch, act_dim, hidden, blocks, dynlayers, act="SiLU"):
+    def __init__(
+        self, deter, stoch, act_dim, hidden, blocks, dynlayers, act="SiLU", dtype=None
+    ):  #! `dtype`: norm-layer dtype, see tools.norm_dtype
         super().__init__()
+        dtype = dtype or torch.bfloat16
         self.blocks = int(blocks)
         self.dynlayers = int(dynlayers)
         act = getattr(torch.nn, act)
         self._dyn_in0 = nn.Sequential(
             nn.Linear(deter, hidden, bias=True),
-            nn.RMSNorm(hidden, eps=1e-04, dtype=torch.bfloat16),
+            nn.RMSNorm(hidden, eps=1e-04, dtype=dtype),
             act(),
         )
         self._dyn_in1 = nn.Sequential(
             nn.Linear(stoch, hidden, bias=True),
-            nn.RMSNorm(hidden, eps=1e-04, dtype=torch.bfloat16),
+            nn.RMSNorm(hidden, eps=1e-04, dtype=dtype),
             act(),
         )
         self._dyn_in2 = nn.Sequential(
             nn.Linear(act_dim, hidden, bias=True),
-            nn.RMSNorm(hidden, eps=1e-04, dtype=torch.bfloat16),
+            nn.RMSNorm(hidden, eps=1e-04, dtype=dtype),
             act(),
         )
         self._dyn_hid = nn.Sequential()
@@ -42,7 +45,7 @@ class Deter(nn.Module):
                 f"dyn_hid_{i}", BlockLinear(in_ch, deter, self.blocks)
             )
             self._dyn_hid.add_module(
-                f"norm_{i}", nn.RMSNorm(deter, eps=1e-04, dtype=torch.bfloat16)
+                f"norm_{i}", nn.RMSNorm(deter, eps=1e-04, dtype=dtype)
             )
             self._dyn_hid.add_module(f"act_{i}", act())
             in_ch = deter
@@ -103,6 +106,7 @@ class RSSM(nn.Module):
         self._unimix_ratio = float(config.unimix_ratio)
         self._initial = str(config.initial)
         self._device = torch.device(config.device)
+        norm_dt = norm_dtype(config)  #!
         self._act_dim = act_dim
         self._obs_layers = int(config.obs_layers)
         self._img_layers = int(config.img_layers)
@@ -118,6 +122,7 @@ class RSSM(nn.Module):
             blocks=self._blocks,
             dynlayers=self._dyn_layers,
             act=config.act,
+            dtype=norm_dt,  #!
         )
 
         self._obs_net = nn.Sequential()
@@ -128,7 +133,7 @@ class RSSM(nn.Module):
             )
             self._obs_net.add_module(
                 f"obs_net_n_{i}",
-                nn.RMSNorm(self._hidden, eps=1e-04, dtype=torch.bfloat16),
+                nn.RMSNorm(self._hidden, eps=1e-04, dtype=norm_dt),
             )
             self._obs_net.add_module(f"obs_net_a_{i}", act())
             inp_dim = self._hidden
@@ -150,7 +155,7 @@ class RSSM(nn.Module):
             )
             self._img_net.add_module(
                 f"img_net_n_{i}",
-                nn.RMSNorm(self._hidden, eps=1e-04, dtype=torch.bfloat16),
+                nn.RMSNorm(self._hidden, eps=1e-04, dtype=norm_dt),
             )
             self._img_net.add_module(f"img_net_a_{i}", act())
             inp_dim = self._hidden

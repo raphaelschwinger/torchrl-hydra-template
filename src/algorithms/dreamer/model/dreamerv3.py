@@ -1,3 +1,4 @@
+import contextlib
 import copy
 from collections import OrderedDict
 
@@ -37,6 +38,12 @@ class DreamerV3(nn.Module):
         self.act_dim = act_space.n if hasattr(act_space, "n") else sum(act_space.shape)
         self._loss_scales = dict(config.loss_scales)
         self._log_grads = bool(config.log_grads)
+        # Runtime knobs. `amp` is not purely a speed switch here: the norm layers
+        # below are *constructed* in bf16 rather than wrapped in autocast, so the
+        # two have to move together or fp32 activations meet bf16 weights. The
+        # dtype is stamped onto the whole config tree before any module is built.
+        self._amp = bool(config.get("amp", True))
+        tools.patch_norm_dtype(config, "bfloat16" if self._amp else "float32")
 
         if hasattr(obs_space, "spaces"):
             shapes = {k: tuple(v.shape) for k, v in obs_space.spaces.items()}
@@ -117,7 +124,8 @@ class DreamerV3(nn.Module):
         self._scheduler = LambdaLR(self._optimizer, lr_lambda=lr_lambda)
         self.train()
         self.clone_and_freeze()
-        if config.compile:
+        self._compiled = bool(config.compile)
+        if self._compiled:
             print("Compiling update function with torch.compile...", flush=True)
             self._cal_grad = torch.compile(self._cal_grad, mode="reduce-overhead")
 
@@ -293,8 +301,16 @@ class DreamerV3(nn.Module):
     def update(self, data: TensorDict, initial: tuple[torch.Tensor, torch.Tensor]):
         p_data = self.preprocess(data)
         self._update_slow_target()
-        torch.compiler.cudagraph_mark_step_begin()
-        with autocast(device_type=self.device.type, dtype=torch.bfloat16):
+        # `cudagraph_mark_step_begin` is only meaningful under the CUDA graphs
+        # that `compile(mode="reduce-overhead")` captures.
+        if self._compiled:
+            torch.compiler.cudagraph_mark_step_begin()
+        amp = (
+            autocast(device_type=self.device.type, dtype=torch.bfloat16)
+            if self._amp
+            else contextlib.nullcontext()
+        )
+        with amp:
             (stoch, deter), mets = self._cal_grad(p_data, initial)
         self._post_grad_hook()
         if self._log_grads:
