@@ -167,16 +167,13 @@ python src/train.py experiment=dreamer/atari100k algorithm.dreamer_config.perf.b
 |---|---|---|---|---|
 | `static_pad` | `networks.py` `Conv2dSamePad` | native `padding=k//2` conv vs. r2dreamer's runtime `F.pad` + copy | identical | No|
 | `dedup_value` | `model/dreamerv3.py` `_cal_grad` | the *target* value forward only: reuses the trainable forward's mode vs. r2dreamer's separate (redundant, same weights) `_frozen_value` forward. The value/repval losses always reuse a single trainable forward for both `log_prob` terms — r2dreamer never duplicated that call, so this part isn't flag-gated. | identical | No |
-| `cudnn_benchmark` | `model/dreamerv3.py` | `torch.backends.cudnn.benchmark` (r2dreamer never sets it, so `false` = PyTorch default) | identical | Yes — a global PyTorch backend flag; would help any conv-heavy algorithm with static shapes |
-| `tf32` | `model/dreamerv3.py` | `float32_matmul_precision="high"` for f32 ops outside the autocast region (r2dreamer never sets it) | identical | Yes — same story as `cudnn_benchmark`|
+| `cudnn_benchmark` | `model/dreamerv3.py` | `torch.backends.cudnn.benchmark` (r2dreamer leaves it commented out at `train.py:17`, so `false` = its effective behaviour: the PyTorch default) | identical | Yes — a global PyTorch backend flag; would help any conv-heavy algorithm with static shapes |
+| `tf32` | `model/dreamerv3.py` | `float32_matmul_precision="high"` for f32 ops outside the autocast region. **Not a change over r2dreamer** — it sets the same thing unconditionally at `train.py:18`, so `true` is parity and `false` runs *below* upstream | identical | Yes — same story as `cudnn_benchmark`|
 | `bf16_autocast` | `model/dreamerv3.py` `update`/`_cal_grad` | bfloat16 autocast + no gradient scaling vs. r2dreamer's original float16 autocast + `GradScaler` | differs | Partially — bf16 autocast/`GradScaler` is standard PyTorch AMP and would work for any algorithm's forward/backward
 | `foreach_laprop` | `src/components/optim/laprop.py` | batched `torch._foreach_*` optimiser step vs. r2dreamer's original per-parameter loop | identical on f32 params (verified by `tests/test_laprop.py`) | No|
 
-All the `if perf_flags.flags.x:` checks are plain Python bools read from a
-module-level singleton fixed once at model construction, before
-`torch.compile` ever traces `_cal_grad` — Dynamo specialises on the value at
-trace time and bakes in only the branch taken, so none of these checks add
-runtime branching cost, compiled or not.
+(Two places run f32 inside an otherwise bf16 model, both following r2dreamer
+rather than official DreamerV: act() and RSSM Carry)
 
 **Additionally one big speed improvement is using `max-autotune` for the torch compile type, which can be set in the dreamer config file.**
 
