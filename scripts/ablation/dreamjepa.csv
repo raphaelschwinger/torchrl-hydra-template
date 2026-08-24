@@ -1,0 +1,34 @@
+arm,label,section,game,seed,run_id,state,score,runtime
+Baseline/DreamJEPA (deter target),DreamJEPA (deter target),Baseline,Jamesbond-v5,42,fk717ez4,finished,298.0,10.817085872193552
+Baseline/DreamJEPA (deter target),DreamJEPA (deter target),Baseline,Jamesbond-v5,1,7n3l5mfi,finished,172.0,10.624544591874155
+Baseline/DreamJEPA (deter target),DreamJEPA (deter target),Baseline,Jamesbond-v5,44,s8i7azqe,finished,182.5,11.19768060281279
+"Target & prediction/std-MSE target, predict from prior ↑","std-MSE target, predict from prior ↑",Target & prediction,Jamesbond-v5,42,9la3r2ev,finished,342.5,11.346431163603505
+"Target & prediction/std-MSE target, predict from prior ↑","std-MSE target, predict from prior ↑",Target & prediction,Jamesbond-v5,1,942hyj40,finished,305.5,10.841505234913509
+"Target & prediction/std-MSE target, predict from prior ↑","std-MSE target, predict from prior ↑",Target & prediction,Jamesbond-v5,2,tz4p941o,finished,356.5,10.831687388213483
+"Target & prediction/std-MSE target, predict from prior ↑","std-MSE target, predict from prior ↑",Target & prediction,Jamesbond-v5,3,lxk52qab,finished,229.5,10.981615985453114
+Target & prediction/repval 0.3 → 1.0 ↑,repval 0.3 → 1.0 ↑,Target & prediction,Jamesbond-v5,42,7o84zl9g,finished,186.5,11.506823154893993
+Target & prediction/repval 0.3 → 1.0 ↑,repval 0.3 → 1.0 ↑,Target & prediction,Jamesbond-v5,1,l5bykc87,finished,282.5,11.363378577453496
+Target & prediction/repval 0.3 → 1.0 ↑,repval 0.3 → 1.0 ↑,Target & prediction,Jamesbond-v5,2,bp7bk9ug,finished,176.0,11.476617497009567
+Regularisation/− SigReg,− SigReg,Regularisation,Jamesbond-v5,42,aq37veri,finished,401.0,11.401300990526067
+Regularisation/− SigReg,− SigReg,Regularisation,Jamesbond-v5,1,nbyw3abj,finished,226.5,11.24577399645705
+Regularisation/− SigReg,− SigReg,Regularisation,Jamesbond-v5,2,bsgktm8f,finished,364.5,11.345825198495476
+Regularisation/− SigReg − variance (JEPA only),− SigReg − variance (JEPA only),Regularisation,Jamesbond-v5,42,dabg25rv,finished,336.0,11.469662035430765
+Regularisation/− SigReg − variance (JEPA only),− SigReg − variance (JEPA only),Regularisation,Jamesbond-v5,1,cppxxsfx,finished,271.5,11.407979595708163
+Regularisation/− SigReg − variance (JEPA only),− SigReg − variance (JEPA only),Regularisation,Jamesbond-v5,2,l87jgvg5,finished,455.5,11.383505172749093
+"Ground head/Ground from stoch, no SigReg/var","Ground from stoch, no SigReg/var",Ground head,Jamesbond-v5,42,bwjnga9p,finished,360.0,10.72496223835056
+"Ground head/Ground from stoch, no SigReg/var","Ground from stoch, no SigReg/var",Ground head,Jamesbond-v5,1,iwbr8wrb,finished,282.5,10.650569603395455
+"Ground head/Ground from stoch, variance kept","Ground from stoch, variance kept",Ground head,Jamesbond-v5,42,gj5rkkan,finished,317.5,11.302268098871536
+"Ground head/Ground from stoch, variance kept","Ground from stoch, variance kept",Ground head,Jamesbond-v5,1,bvve5dal,finished,197.5,11.103593297239868
+Ground head/Linear ground head only,Linear ground head only,Ground head,Jamesbond-v5,42,m11mxo24,finished,175.5,11.364253804229229
+Ground head/Ground loss only (jepa 20 → 0),Ground loss only (jepa 20 → 0),Ground head,Jamesbond-v5,42,p2vsxdpd,finished,195.0,11.448859047394347
+Optimisation/act_entropy 3e-4 → 1e-3 ↑,act_entropy 3e-4 → 1e-3 ↑,Optimisation,Jamesbond-v5,42,334i8jca,finished,247.5,10.864638174619856
+Optimisation/act_entropy 3e-4 → 1e-3 ↑,act_entropy 3e-4 → 1e-3 ↑,Optimisation,Jamesbond-v5,1,7rx0u616,finished,185.0,11.074020548502915
+Optimisation/act_entropy 3e-4 → 1e-3 ↑,act_entropy 3e-4 → 1e-3 ↑,Optimisation,Jamesbond-v5,2,t5jakf8n,finished,485.5,11.105359491797088
+Optimisation/act_entropy 3e-4 → 1e-3 ↑,act_entropy 3e-4 → 1e-3 ↑,Optimisation,Jamesbond-v5,3,i9l89vxk,finished,280.0,11.015025340680783
+Optimisation/act_entropy 3e-4 → 1e-3 ↑,act_entropy 3e-4 → 1e-3 ↑,Optimisation,Jamesbond-v5,4,ke5pf5us,finished,192.5,11.253590566600037
+Optimisation/act_entropy 3e-4 → 1e-3 ↑,act_entropy 3e-4 → 1e-3 ↑,Optimisation,Jamesbond-v5,5,r73hfzxi,finished,147.5,11.194531953136869
+Optimisation/act_entropy 3e-4 → 3e-3 ↑,act_entropy 3e-4 → 3e-3 ↑,Optimisation,Jamesbond-v5,42,kp2svcsa,finished,163.0,11.472354352343084
+Optimisation/act_entropy 3e-4 → 3e-3 ↑,act_entropy 3e-4 → 3e-3 ↑,Optimisation,Jamesbond-v5,1,nw33czs1,finished,195.5,11.297806936408042
+Optimisation/act_entropy 3e-4 → 3e-3 ↑,act_entropy 3e-4 → 3e-3 ↑,Optimisation,Jamesbond-v5,2,xv18pudf,finished,131.0,10.04025446218963
+Optimisation/lr 4e-5 → 1e-4 ↑,lr 4e-5 → 1e-4 ↑,Optimisation,Jamesbond-v5,42,cyevm8d6,finished,223.5,10.882628991472938
+Optimisation/lr 4e-5 → 1e-4 ↑,lr 4e-5 → 1e-4 ↑,Optimisation,Jamesbond-v5,1,vmla61ry,finished,128.0,10.885965395628627

@@ -180,6 +180,11 @@ so runs recorded under different evaluation protocols are silently incomparable
 the single point is back-filled across the axis. Use `--tag` to keep one
 sweep's runs together (see [Multi-GPU benchmark sweeps](#multi-gpu-benchmark-sweeps)).
 
+### Ablation figures
+
+`rlops` compares algorithms; it does not draw ablations. `scripts/make_ablation_figure.sh`
+is our own plotting code for those — see [scripts/ablation/README.md](../scripts/ablation/README.md).
+
 ## Benchmark results
 
 Three seeds per algorithm, produced by `./scripts/run_benchmarks.sh --gpus 2,3

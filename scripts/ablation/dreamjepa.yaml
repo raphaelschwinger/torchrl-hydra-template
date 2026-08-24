@@ -1,0 +1,135 @@
+# Ablation figure spec: DreamJEPA on Atari-100k Jamesbond.
+#
+#   ./scripts/make_ablation_figure.sh --spec dreamjepa --fetch   # pull + draw
+#   ./scripts/make_ablation_figure.sh --spec dreamjepa           # redraw from cache
+#
+# NON-ADDITIVE ABLATION. These arms are not a cumulative staircase — each is the
+# baseline with one or two things changed, and several overlap rather than nest.
+# So `delta_reference: first` puts every superscript against the baseline row
+# instead of the row above. This is the isolated one-at-a-time companion the
+# Bird-MAE paper puts in its appendix, drawn in the same layout as its Figure 3.
+# Row order is presentation only here; it carries no "and then we added" meaning.
+
+entity: LatentLab
+project: DreamJEPA
+
+# Merged into every arm's filters (the arm's own keys win). Keeps `state` and the
+# budget bound off each of the fifteen rows below.
+default_filters:
+  state: finished
+  config.trainer.total_frames: 100000
+
+# ---------------------------------------------------------------- measurement
+score:
+  metric: eval/final_return_mean
+  normalization: human
+  reduce: iqm
+  # Turn these on before reading any delta as real — see the caption note.
+  confidence_intervals: true
+  bootstrap_reps: 2000
+  games:
+    Jamesbond-v5: {random: 29.0, human: 302.8}
+
+runtime:
+  metric: time/speed
+  aggregate: history
+  reduce: median
+  confidence_intervals: false
+  bootstrap_reps: 2000
+
+# -------------------------------------------------------------------- figure
+figure:
+  title: DreamJEPA ablations — Atari-100k Jamesbond
+  caption: >-
+    Each row is the baseline with one change; superscripts are the change
+    against the baseline row, not the row above. Bars are IQM human-normalised
+    score over the seeds listed per row; whiskers are 95% bootstrap CIs.
+    Single-game, ~3-seed arms: the CIs overlap almost everywhere, so read this
+    as a screen for which directions are worth more seeds, not as a ranking.
+    Throughput is median training agent frames/s and is far better resolved.
+  delta_reference: first
+  panels:
+    score:
+      label: IQM human-normalised score
+      compress_below: auto
+      compress_fraction: 0.25
+      value_format: "{:.1f}"
+      delta_format: "{:+.1f}"
+    runtime:
+      label: Training throughput (agent frames/s)
+      compress_below: auto
+      compress_fraction: 0.25
+      value_format: "{:.2f}"
+      delta_format: "{:+.2f}"
+  width: 14.0
+  row_height: 0.52
+  show_missing: true
+
+# ---------------------------------------------------------------------- rows
+#
+# Two naming eras live in this project, so rows select differently:
+#   * Aug 14+ arms are named `djepa_<arm>_s<seed>` -> a displayName regex.
+#   * The baseline predates that -> explicit run ids, because seed 42 was rerun
+#     seven times across a drifting config and a regex cannot tell them apart.
+sections:
+  - name: Baseline
+    color: "#9aa0a6"
+    arms:
+      # dreamjepa_Jamesbond_atari100k_s{1,42,44}, 2026-08-13/14, the last config
+      # before the `djepa_*` sweeps: predict_from=deter, ground=5,
+      # ground_head=None, sigreg=0.09, var=1. Pinned by id on purpose — seed 42
+      # alone has seven runs in this window and they are NOT the same config.
+      - label: DreamJEPA (deter target)
+        filters:
+          name: {$in: [7n3l5mfi, fk717ez4, s8i7azqe]}
+
+  - name: Target & prediction
+    color: "#5b8ff9"
+    arms:
+      # ground_head=linear, predict_from=prior_feat, target_metric=std_mse, ground=0
+      - label: std-MSE target, predict from prior ↑
+        filters: {displayName: {$regex: "^djepa_stdmse_s[0-9]+$"}}
+      # predict_from=prior_feat, ground=0, repval 0.3 -> 1
+      - label: repval 0.3 → 1.0 ↑
+        filters: {displayName: {$regex: "^djepa_repval_s[0-9]+$"}}
+
+  - name: Regularisation
+    color: "#4bb392"
+    arms:
+      # std-MSE arm with sigreg 0.09 -> 0
+      - label: − SigReg
+        filters: {displayName: {$regex: "^djepa_nosigreg_s[0-9]+$"}}
+      # ... and additionally var 1 -> 0
+      - label: − SigReg − variance (JEPA only)
+        filters: {displayName: {$regex: "^djepa_jepaonly_s[0-9]+$"}}
+
+  - name: Ground head
+    color: "#f2a03d"
+    arms:
+      # `_s[0-9]+$` anchors, so this does NOT also match djepa_gstoch_var_*.
+      - label: Ground from stoch, no SigReg/var
+        filters: {displayName: {$regex: "^djepa_gstoch_s[0-9]+$"}}
+      - label: Ground from stoch, variance kept
+        filters: {displayName: {$regex: "^djepa_gstoch_var_s[0-9]+$"}}
+      - label: Linear ground head only
+        filters: {displayName: {$regex: "^djepa_groundlin_s[0-9]+$"}}
+      - label: Ground loss only (jepa 20 → 0)
+        filters: {displayName: {$regex: "^djepa_groundonly_s[0-9]+$"}}
+
+  - name: Optimisation
+    color: "#b07aa1"
+    arms:
+      # `djepa_actent_*` covers TWO different experiments under one name:
+      # 2026-08-15 ran act_entropy=0.001 (6 seeds), 2026-08-16 ran 0.003 with
+      # ground_head=linear (3 seeds). A name-only regex would pool them into one
+      # meaningless row, so each pins its act_entropy value.
+      - label: act_entropy 3e-4 → 1e-3 ↑
+        filters:
+          displayName: {$regex: "^djepa_actent_s[0-9]+$"}
+          config.algorithm.dreamer_config.act_entropy: 0.001
+      - label: act_entropy 3e-4 → 3e-3 ↑
+        filters:
+          displayName: {$regex: "^djepa_actent_s[0-9]+$"}
+          config.algorithm.dreamer_config.act_entropy: 0.003
+      - label: lr 4e-5 → 1e-4 ↑
+        filters: {displayName: {$regex: "^djepa_lr1e-4_s[0-9]+$"}}
