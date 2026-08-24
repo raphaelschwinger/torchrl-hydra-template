@@ -1,0 +1,46 @@
+# This is an example figure based on the results from the BirdMAE Paper from where this graphic is inspired
+entity: none
+project: none
+score: {metric: map, normalization: none, reduce: mean, games: {}}
+runtime: {metric: time/speed, aggregate: summary, reduce: median}
+figure:
+  title: "Ablations for updating the base Audio-MAE (renderer check)"
+  caption: "Reproduction of Rauch et al. (2025) Figure 3 from the paper's own numbers."
+  delta_reference: previous
+  panels:
+    score:
+      label: MAP (HSN)
+      compress_below: auto
+      compress_fraction: 0.25
+      value_format: "{:.2f}"
+      delta_format: "{:+.2f}"
+    runtime:
+      label: "Throughput (samples/s)"
+      compress_below: auto
+      compress_fraction: 0.25
+      value_format: "{:.0f}"
+      delta_format: "{:+.0f}"
+  width: 13.0
+  row_height: 0.52
+  # Paper-reported numbers, not seeds — an "n=1" per row would mislead.
+  show_seed_counts: false
+sections:
+  - name: Baseline
+    color: "#d9d9d9"
+    arms:
+      - {label: "Audio MAE", filters: {}}
+      - {label: "our fine-tuning", filters: {}}
+  - name: Pretraining
+    color: "#fbd7b5"
+    arms:
+      - {label: "ViT-L BirdSet +", filters: {}}
+      - {label: "Epochs 150 ↑", filters: {}}
+      - {label: "Masking 0.75 ↓", filters: {}}
+      - {label: "Batch 1024 ↑", filters: {}}
+      - {label: "ViT Decoder +", filters: {}}
+      - {label: "Mixup 0.3 +", filters: {}}
+  - name: Fine-Tuning
+    color: "#f08c2e"
+    arms:
+      - {label: "ProtoP Layer +", filters: {}}
+      - {label: "Bird MAE", highlight: true, color: "#4bb392", filters: {}}
