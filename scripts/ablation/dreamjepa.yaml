@@ -41,12 +41,8 @@ runtime:
 figure:
   title: DreamJEPA ablations — Atari-100k Jamesbond
   caption: >-
-    Each row is the baseline with one change; superscripts are the change
-    against the baseline row, not the row above. Bars are IQM human-normalised
-    score over the seeds listed per row; whiskers are 95% bootstrap CIs.
-    Single-game, ~3-seed arms: the CIs overlap almost everywhere, so read this
-    as a screen for which directions are worth more seeds, not as a ranking.
-    Throughput is median training agent frames/s and is far better resolved.
+    Each row is the baseline with one change
+  meta_position: spine
   delta_reference: first
   panels:
     score:

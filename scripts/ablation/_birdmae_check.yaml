@@ -6,6 +6,7 @@ runtime: {metric: time/speed, aggregate: summary, reduce: median}
 figure:
   title: "Ablations for updating the base Audio-MAE (renderer check)"
   caption: "Reproduction of Rauch et al. (2025) Figure 3 from the paper's own numbers."
+  meta_position: spine
   delta_reference: previous
   panels:
     score:

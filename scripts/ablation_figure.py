@@ -451,6 +451,7 @@ def render(spec: dict, arms: list[Arm], out_path: Path) -> None:
             show_missing=fig_cfg.get("show_missing", True),
             label_rows=(panel_key == "score"),
             show_counts=fig_cfg.get("show_seed_counts", True),
+            meta_position=fig_cfg.get("meta_position", "inline"),
         )
 
     ax.set_xlim(-1.14, 1.14)
@@ -521,6 +522,27 @@ def _half_scale(values, intervals, cfg, sign):
     }
 
 
+#: Bird-MAE's row markers, written at the end of a label in the spec: † for a
+#: row that changes what the learner computes, + / ↑ / ↓ for new component,
+#: parameter up, parameter down.
+MARKER_CHARS = "†↑↓+"
+
+
+def _split_markers(label: str) -> tuple[str, str]:
+    """Separate a label's trailing markers from its name.
+
+    `meta_position: spine` writes the name on the score side of the spine and
+    the markers on the runtime side, so the two halves meet in a clean column
+    instead of the name carrying its punctuation into the bar.
+    """
+    name = label.rstrip()
+    markers: list[str] = []
+    while name and name[-1] in MARKER_CHARS:
+        markers.append(name[-1])
+        name = name[:-1].rstrip()
+    return name, " ".join(reversed(markers))
+
+
 def _draw_half(
     *,
     ax,
@@ -534,6 +556,7 @@ def _draw_half(
     show_missing,
     label_rows,
     show_counts,
+    meta_position="inline",
 ) -> list:
     if half["empty"]:
         return []
@@ -547,6 +570,10 @@ def _draw_half(
     inner_ha = "right" if sign < 0 else "left"
     outer_ha = "left" if sign < 0 else "right"
     pad = 0.012
+    # `spine`: the name stays on the score side and its markers and seed count
+    # cross to the runtime side, so both meet at the spine instead of the name
+    # trailing punctuation into its bar. `inline` keeps them in the label.
+    split_meta = meta_position == "spine"
 
     placements: list[tuple] = []
     last_present: float | None = None
@@ -566,10 +593,13 @@ def _draw_half(
                     lw=1.0,
                 )
                 if label_rows:
+                    name = (
+                        _split_markers(arm.label)[0] if split_meta else arm.label
+                    )
                     ax.text(
                         sign * pad,
                         y,
-                        f"{arm.label}   (no runs)",
+                        f"{name}   (no runs)",
                         va="center",
                         ha=inner_ha,
                         fontsize=9.5,
@@ -585,8 +615,13 @@ def _draw_half(
         label_art = None
         if label_rows:
             # Seed count rides with the name: coverage is uneven across arms and
-            # a one-seed row must not read like a three-seed one.
-            text = f"{arm.label}   n={arm.n_runs}" if show_counts else arm.label
+            # a one-seed row must not read like a three-seed one. Under
+            # `meta_position: spine` it rides the other side of the spine
+            # instead, drawn by the runtime half below.
+            if split_meta:
+                text = _split_markers(arm.label)[0]
+            else:
+                text = f"{arm.label}   n={arm.n_runs}" if show_counts else arm.label
             label_art = ax.text(
                 sign * pad,
                 y,
@@ -598,6 +633,24 @@ def _draw_half(
                 color="#1a1a1a",
                 zorder=7,
             )
+        if split_meta and not label_rows:
+            markers = _split_markers(arm.label)[1]
+            meta = " ".join(
+                part
+                for part in (markers, f"n={arm.n_runs}" if show_counts else "")
+                if part
+            )
+            if meta:
+                ax.text(
+                    sign * pad,
+                    y,
+                    meta,
+                    va="center",
+                    ha=inner_ha,
+                    fontsize=8.5,
+                    color="#4a4a4a",
+                    zorder=7,
+                )
         value_art = ax.text(
             x_end - sign * pad,
             y,

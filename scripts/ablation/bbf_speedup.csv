@@ -1,0 +1,15 @@
+arm,label,section,game,seed,run_id,state,score,runtime
+Baseline/Published BBF (RR2),Published BBF (RR2),Baseline,Jamesbond-v5,1,vwbpoxw5,finished,1251.0,18.888081177849045
+Baseline/Published BBF (RR2),Published BBF (RR2),Baseline,Jamesbond-v5,2,dc2e91w2,finished,702.0,18.94119751214128
+Baseline/Published BBF (RR2),Published BBF (RR2),Baseline,Jamesbond-v5,3,xxxxqws7,finished,524.5,19.3391661601662
+Baseline/Published BBF (RR2),Published BBF (RR2),Baseline,Jamesbond-v5,4,ea0rrdct,finished,623.5,19.48706789024081
+Baseline/Published BBF (RR2),Published BBF (RR2),Baseline,Jamesbond-v5,5,si97qido,finished,880.5,19.24096491234627
+Changes the learner †/Uniform replay (no PER) †,Uniform replay (no PER) †,Changes the learner †,Jamesbond-v5,1,we5xy313,finished,997.5,16.920233853852434
+Changes the learner †/Uniform replay (no PER) †,Uniform replay (no PER) †,Changes the learner †,Jamesbond-v5,2,w4s1cmv5,finished,727.5,8.368105888444711
+Changes the learner †/Uniform replay (no PER) †,Uniform replay (no PER) †,Changes the learner †,Jamesbond-v5,3,radug2pq,finished,873.5,20.052367740796807
+Changes the learner †/Uniform replay (no PER) †,Uniform replay (no PER) †,Changes the learner †,Jamesbond-v5,4,kzn0ojj1,finished,1066.0,20.069888777799466
+Changes the learner †/Uniform replay (no PER) †,Uniform replay (no PER) †,Changes the learner †,Jamesbond-v5,5,qki5fjey,finished,1270.5,19.78424359322816
+Changes the learner †/Optimisation batch 32 → 16 ↓ †,Optimisation batch 32 → 16 ↓ †,Changes the learner †,Jamesbond-v5,1,1aqh7pb9,finished,601.5,22.285026028736024
+Changes the learner †/Optimisation batch 32 → 16 ↓ †,Optimisation batch 32 → 16 ↓ †,Changes the learner †,Jamesbond-v5,2,nyu8d4ld,finished,745.5,9.704251566613364
+Changes the learner †/Optimisation batch 32 → 16 ↓ †,Optimisation batch 32 → 16 ↓ †,Changes the learner †,Jamesbond-v5,3,lbnhhlrt,finished,748.5,26.369953279817416
+Changes the learner †/Optimisation batch 32 → 16 ↓ †,Optimisation batch 32 → 16 ↓ †,Changes the learner †,Jamesbond-v5,4,icm4o2gj,finished,331.5,26.39332983494289

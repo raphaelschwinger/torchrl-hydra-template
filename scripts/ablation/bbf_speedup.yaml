@@ -1,0 +1,91 @@
+entity: LatentLab
+project: torchrl-hydra-template
+
+default_filters:
+  state: finished
+  config.trainer.total_frames: 100000
+  config.env_id: Jamesbond-v5
+  config.algorithm._target_: src.algorithms.bbf.BBFAlgorithm
+
+score:
+  metric: eval/final_return_mean
+  normalization: human
+  reduce: iqm
+  confidence_intervals: true
+  bootstrap_reps: 2000
+  games:
+    Jamesbond-v5: {random: 29.0, human: 302.8}
+
+runtime:
+  metric: time/speed
+  aggregate: history
+  reduce: median
+  confidence_intervals: true
+  bootstrap_reps: 2000
+
+figure:
+  title: BBF runtime tweaks — Atari-100k Jamesbond
+  caption: >-
+    One-at-a-time ablation: † marks a row that changes what the learner computes
+  delta_reference: first
+  meta_position: spine
+  panels:
+    score:
+      label: IQM human-normalised score
+      compress_below: auto
+      compress_fraction: 0.25
+      value_format: "{:.1f}"
+      delta_format: "{:+.1f}"
+    runtime:
+      label: Training throughput (agent frames/s)
+      compress_below: auto
+      compress_fraction: 0.25
+      value_format: "{:.1f}"
+      delta_format: "{:+.1f}"
+  width: 13.5
+  row_height: 0.52
+  show_missing: true
+
+sections:
+  - name: Baseline
+    color: "#c9ccd1"
+    arms:
+      - label: Published BBF (RR2)
+        filters: {config.exp_name: bbf, createdAt: {$gt: "2026-08-01T00:00:00"}}
+
+  - name: Network execution
+    color: "#f7cba4"
+    arms:
+      - label: torch.compile +
+        filters: {config.exp_name: bbf_ablation_compile}
+      - label: Mixed precision (bf16) +
+        filters: {config.exp_name: bbf_ablation_amp}
+      - label: Channels-last +
+        filters: {config.exp_name: bbf_ablation_channels_last}
+
+  - name: Data pipeline
+    color: "#f4a95f"
+    arms:
+      - label: Pinned staging + async H2D +
+        filters: {config.exp_name: bbf_ablation_pin_memory}
+      - label: GPU-resident replay +
+        filters: {config.exp_name: bbf_ablation_gpu_replay}
+
+  - name: Changes the learner †
+    color: "#b07aa1"
+    arms:
+      - label: Uniform replay (no PER) †
+        filters: {config.exp_name: bbf_ablation_uniform}
+      - label: Optimisation batch 32 → 64 ↑ †
+        filters: {config.exp_name: bbf_ablation_batch64}
+      - label: Optimisation batch 32 → 16 ↓ †
+        filters: {config.exp_name: bbf_ablation_batch16}
+      - label: Replay ratio 2 → 8 ↑ †
+        filters: {config.exp_name: bbf_ablation_rr8}
+
+  - name: Combined
+    color: "#3fae7f"
+    arms:
+      - label: BBF (fast) — GPU replay + channels-last
+        highlight: true
+        filters: {config.exp_name: bbf_ablation_combined}
