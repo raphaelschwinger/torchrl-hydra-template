@@ -20,6 +20,7 @@ buffer_config:
   batch_size: 16
   batch_length: 64
   online: true    # official DreamerV3 replay.online: fresh segments are always trained on once before uniform sampling resumes
+  pin_memory: true # stage the sampled batch in page-locked host memory so the CPU->GPU copy is async
   max_size: 5e6
   storage_device: cpu #! Keep Replay Buffer on CPU (Mabe use GPU on Kiel)
   device: ${trainer.accelerator}
@@ -33,7 +34,9 @@ dreamer_config:
   imag_horizon: 15
   horizon: 333
   lamb: 0.95
-  compile: True #! For more speed use max-autotune here
+  compile: True #! For more speed use max-autotune here. Also gates
+                #! cudagraph_mark_step_begin(), which only means anything under
+                #! the CUDA graphs that reduce-overhead / max-autotune capture.
   log_grads: False
   device: ${trainer.accelerator}
 
@@ -43,7 +46,10 @@ dreamer_config:
     dedup_value: true      # reuse trainable value forward for targets instead of r2dreamer's separate frozen forward
     cudnn_benchmark: true  # torch.backends.cudnn.benchmark (r2dreamer leaves it commented out)
     tf32: true             # float32_matmul_precision="high" for f32 ops outside autocast; r2dreamer sets the same thing in train.py, so true = parity, false = below upstream
-    bf16_autocast: true    # bf16 autocast, no grad scaling; false = r2dreamer's original fp16 autocast + GradScaler
+    amp: bf16              # mixed precision: bf16 = bf16 autocast, no grad scaling (official DreamerV3)
+                           #                  fp16 = fp16 autocast + GradScaler (r2dreamer parity)
+                           #                  "off" = full f32, no autocast (baseline / debugging)
+                           # Quote "off": bare off is a YAML boolean. On the CLI, perf.amp=off is fine.
     foreach_laprop: true   # batched torch._foreach_* optimiser step instead of r2dreamer's original per-parameter loop
 
   lr: 4e-5

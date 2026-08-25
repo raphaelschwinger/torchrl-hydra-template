@@ -157,10 +157,11 @@ Three design decisions required custom adaptation due to TorchRL conventions:
 ### Performance flags
 
 `dreamer_config.perf` (see `configs/algorithm/dreamer.yaml`) gates speed
-optimisations behind independent flags, all `true` by default:
+optimisations behind independent flags; the booleans all default `true` and
+`amp` defaults to `bf16`:
 
 ```bash
-python src/train.py experiment=dreamer/atari100k algorithm.dreamer_config.perf.bf16_autocast=false
+python src/train.py experiment=dreamer/atari100k algorithm.dreamer_config.perf.amp=fp16
 ```
 
 | flag | file | what it toggles | numerics | reusable for DQN/DDPG/A2C? |
@@ -169,8 +170,13 @@ python src/train.py experiment=dreamer/atari100k algorithm.dreamer_config.perf.b
 | `dedup_value` | `model/dreamerv3.py` `_cal_grad` | the *target* value forward only: reuses the trainable forward's mode vs. r2dreamer's separate (redundant, same weights) `_frozen_value` forward. The value/repval losses always reuse a single trainable forward for both `log_prob` terms — r2dreamer never duplicated that call, so this part isn't flag-gated. | identical | No |
 | `cudnn_benchmark` | `model/dreamerv3.py` | `torch.backends.cudnn.benchmark` (r2dreamer leaves it commented out at `train.py:17`, so `false` = its effective behaviour: the PyTorch default) | identical | Yes — a global PyTorch backend flag; would help any conv-heavy algorithm with static shapes |
 | `tf32` | `model/dreamerv3.py` | `float32_matmul_precision="high"` for f32 ops outside the autocast region. **Not a change over r2dreamer** — it sets the same thing unconditionally at `train.py:18`, so `true` is parity and `false` runs *below* upstream | identical | Yes — same story as `cudnn_benchmark`|
-| `bf16_autocast` | `model/dreamerv3.py` `update`/`_cal_grad` | bfloat16 autocast + no gradient scaling vs. r2dreamer's original float16 autocast + `GradScaler` | differs | Partially — bf16 autocast/`GradScaler` is standard PyTorch AMP and would work for any algorithm's forward/backward
+| `amp` | `model/dreamerv3.py` `update` | mixed-precision scheme, not a boolean: `bf16` = bfloat16 autocast with no gradient scaling (official DreamerV3); `fp16` = float16 autocast + `GradScaler` (r2dreamer parity — fp16's 5-bit exponent underflows, so the scaling is required); `off` = full f32. A plain switch only because `RMSNormF32` keeps f32 norm weights and upcasts internally; norms constructed in bf16 would couple to it. Quote `"off"` in YAML — bare `off` is a YAML boolean; `perf.amp=off` on the CLI is fine. | differs | Partially — autocast/`GradScaler` is standard PyTorch AMP and would work for any algorithm's forward/backward |
 | `foreach_laprop` | `src/components/optim/laprop.py` | batched `torch._foreach_*` optimiser step vs. r2dreamer's original per-parameter loop | identical on f32 params (verified by `tests/test_laprop.py`) | No|
+
+One more speed knob lives outside `perf`, on the buffer it configures:
+`buffer_config.pin_memory` (`buffer.py`) stages a sampled batch in page-locked
+host memory so the CPU→GPU copy is async. Numerics-identical; `false` measures
+what the transfer costs without it.
 
 (Two places run f32 inside an otherwise bf16 model, both following r2dreamer
 rather than official DreamerV: act() and RSSM Carry)

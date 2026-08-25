@@ -9,8 +9,19 @@ config into the other.
 ``static_pad``, ``dedup_value``, ``cudnn_benchmark``, ``tf32`` and
 ``foreach_laprop`` are exact optimisations — flipping them off reproduces
 bit-identical numerics, just slower (``foreach_laprop`` verified by
-``tests/test_laprop.py``). ``bf16_autocast`` changes numerics: ``False``
-restores r2dreamer's float16-autocast + ``GradScaler`` scheme.
+``tests/test_laprop.py``). ``amp`` is the one that changes numerics; it picks
+the mixed-precision scheme:
+
+- ``bf16`` — bfloat16 autocast, no gradient scaling (official DreamerV3).
+- ``fp16`` — float16 autocast + ``GradScaler`` (r2dreamer parity). fp16's
+  5-bit exponent underflows on small gradients, so the loss scaling is
+  required, not optional.
+- ``off``  — no autocast at all; the model runs in full float32.
+
+``off`` is a plain switch here only because the norm layers keep f32 weights
+and upcast internally (``networks.RMSNormF32``). Constructing them in bf16
+instead — as this port did before ``d4debb1`` — would couple the norm dtype to
+this flag and make ``off`` a multi-file change.
 """
 
 from __future__ import annotations
@@ -20,13 +31,17 @@ import os
 from pathlib import Path
 
 
+#: Accepted values of ``PerfFlags.amp``.
+AMP_MODES = ("bf16", "fp16", "off")
+
+
 @dataclasses.dataclass
 class PerfFlags:
     static_pad: bool = True
     dedup_value: bool = True
     cudnn_benchmark: bool = True
     tf32: bool = True
-    bf16_autocast: bool = True
+    amp: str = "bf16"
     foreach_laprop: bool = True
 
 
@@ -45,10 +60,37 @@ def configure(cfg=None) -> PerfFlags:
     if cfg is not None:
         data = dict(cfg)
         known = set(dataclasses.asdict(base))
-        overrides = {k: bool(v) for k, v in data.items() if k in known}
+        overrides = {}
+        for key, value in data.items():
+            if key not in known:
+                continue
+            overrides[key] = _parse_amp(value) if key == "amp" else bool(value)
         base = dataclasses.replace(base, **overrides)
     flags = base
     return flags
+
+
+def _parse_amp(value) -> str:
+    """Normalise an ``amp`` override to one of ``AMP_MODES``.
+
+    A bare ``off`` in a YAML *file* is parsed as the boolean ``False`` (YAML
+    1.1 reads off/on as bools), while the Hydra CLI passes the string "off"
+    through unchanged — so both spellings reach here and both must work.
+    ``on``/``true`` is rejected rather than guessed: it does not say whether
+    bf16 or fp16 was meant.
+    """
+    if value is False:
+        return "off"
+    if value is True:
+        raise ValueError(
+            "perf.amp must be one of bf16 / fp16 / off, not a bare true/on "
+            "(YAML reads those as booleans, and they do not say which "
+            "autocast dtype you want)."
+        )
+    name = str(value).lower()
+    if name not in AMP_MODES:
+        raise ValueError(f"unknown perf.amp {value!r}; choose from {list(AMP_MODES)}")
+    return name
 
 
 def configure_env() -> None:

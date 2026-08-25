@@ -1,3 +1,4 @@
+import contextlib
 import copy
 from collections import OrderedDict
 
@@ -41,6 +42,11 @@ class DreamerV3(nn.Module):
         self.act_dim = act_space.n if hasattr(act_space, "n") else sum(act_space.shape)
         self._loss_scales = dict(config.loss_scales)
         self._log_grads = bool(config.log_grads)
+        # Mixed-precision scheme: "bf16" | "fp16" | "off" (see perf_flags).
+        # Unlike a bf16-constructed norm layer, RMSNormF32 is dtype-agnostic —
+        # it keeps f32 weights and upcasts its input — so this is a real
+        # switch and needs no matching change anywhere else.
+        self._amp = perf_flags.flags.amp
 
         if hasattr(obs_space, "spaces"):
             shapes = {k: tuple(v.shape) for k, v in obs_space.spaces.items()}
@@ -113,13 +119,13 @@ class DreamerV3(nn.Module):
             eps=config.eps,
             foreach=perf_flags.flags.foreach_laprop,
         )
-        # perf.bf16_autocast=False restores r2dreamer's original fp16-autocast
-        # + GradScaler scheme (fp16 needs loss scaling to avoid gradient
-        # underflow; bf16 shares f32's exponent range and never does, so the
-        # scaler is a no-op — enabled=False makes every scaler call an
-        # identity/passthrough — when the flag is True).
+        # Loss scaling belongs to fp16 alone: its 5-bit exponent underflows on
+        # small gradients, so perf.amp="fp16" (r2dreamer parity) needs the
+        # scaler. bf16 shares f32's exponent range and never underflows, and
+        # "off" has nothing to scale — for both, enabled=False turns every
+        # scaler call into an identity/passthrough.
         self._scaler = GradScaler(
-            device=self.device.type, enabled=not perf_flags.flags.bf16_autocast
+            device=self.device.type, enabled=(self._amp == "fp16")
         )
 
         def lr_lambda(step):
@@ -143,6 +149,9 @@ class DreamerV3(nn.Module):
             mode = config.compile if isinstance(config.compile, str) else "reduce-overhead"
             print(f"Compiling update function with torch.compile (mode={mode})...", flush=True)
             self._cal_grad = torch.compile(self._cal_grad, mode=mode)
+            self._compiled = True
+        else:
+            self._compiled = False
 
     # ------------------------------------------------------------------
     # Subclass hooks
@@ -316,14 +325,22 @@ class DreamerV3(nn.Module):
     def update(self, data: TensorDict, initial: tuple[torch.Tensor, torch.Tensor]):
         p_data = self.preprocess(data)
         self._update_slow_target()
-        torch.compiler.cudagraph_mark_step_begin()
-        autocast_dtype = (
-            torch.bfloat16 if perf_flags.flags.bf16_autocast else torch.float16
+        # `cudagraph_mark_step_begin` is only meaningful under the CUDA graphs
+        # that `compile(mode="reduce-overhead")` captures.
+        if self._compiled:
+            torch.compiler.cudagraph_mark_step_begin()
+        amp = (
+            contextlib.nullcontext()
+            if self._amp == "off"
+            else autocast(
+                device_type=self.device.type,
+                dtype=torch.bfloat16 if self._amp == "bf16" else torch.float16,
+            )
         )
-        with autocast(device_type=self.device.type, dtype=autocast_dtype):
+        with amp:
             (stoch, deter), mets = self._cal_grad(p_data, initial)
         # unscale_ before AGC so clipping sees real (not fp16-scaled) grad norms;
-        # a no-op when the scaler is disabled (perf.bf16_autocast=True).
+        # a no-op unless perf.amp="fp16", the only mode with a live scaler.
         self._scaler.unscale_(self._optimizer)
         self._post_grad_hook()
         if self._log_grads:

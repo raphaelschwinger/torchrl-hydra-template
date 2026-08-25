@@ -41,9 +41,7 @@ class Deter(nn.Module):
             self._dyn_hid.add_module(
                 f"dyn_hid_{i}", BlockLinear(in_ch, deter, self.blocks)
             )
-            self._dyn_hid.add_module(
-                f"norm_{i}", RMSNormF32(deter, eps=1e-04)
-            )
+            self._dyn_hid.add_module(f"norm_{i}", RMSNormF32(deter, eps=1e-04))
             self._dyn_hid.add_module(f"act_{i}", act())
             in_ch = deter
         self._dyn_gru = BlockLinear(in_ch, 3 * deter, self.blocks)

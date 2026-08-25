@@ -131,9 +131,9 @@ class RMSNormF32(nn.RMSNorm):
     """
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return F.rms_norm(
-            x.float(), self.normalized_shape, self.weight, self.eps
-        ).to(x.dtype)
+        return F.rms_norm(x.float(), self.normalized_shape, self.weight, self.eps).to(
+            x.dtype
+        )
 
 
 class RMSNorm2D(RMSNormF32):
@@ -355,9 +355,7 @@ class ConvDecoder(nn.Module):
             act(),
         )
         self.sp2 = nn.Linear(2 * self.units, math.prod(self.min_shape))
-        self.sp_norm = nn.Sequential(
-            RMSNormF32(self.depths[-1], eps=1e-04), act()
-        )
+        self.sp_norm = nn.Sequential(RMSNormF32(self.depths[-1], eps=1e-04), act())
         layers = []
         in_dim = self.depths[-1]
         for depth in reversed(self.depths[:-1]):
