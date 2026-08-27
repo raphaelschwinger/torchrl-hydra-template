@@ -25,19 +25,34 @@ one is a config override, not a code change.
 
 Both presets share one class; they differ only in their algorithm config:
 
-| | `algorithm=rainbow` (standard) | `algorithm=der` (Atari-100k preset) |
+| | `algorithm=rainbow` (standard) | `experiment=rainbow/atari100k` (DER preset) |
 |---|---|---|
-| Multi-step $n$ | 3 | 20 |
-| Target update period | 8000 grad steps | 2000 grad steps |
-| Encoder | NatureDQN CNN (3 conv) | data-efficient CNN (2 conv, 5×5 stride 5) |
-| Hidden dim | 512 | 256 |
-| Noisy-net $\sigma_0$ | 0.1 | 0.1 |
+| Multi-step $n$ | 3 | 10 |
+| Target update period | 8000 grad steps | 8000 grad steps |
+| Encoder | dqn (NatureDQN-shaped CNN, SAME padding) | dqn (same) |
+| Hidden dim | 512 | 512 |
+| Noisy-net $\sigma_0$ | 0.5 | 0.5 |
+| Adam $\epsilon$ | 1e-8 | 1.5e-4 |
+| Exploration `annealing_frames` | 250,000 | 2,000 |
 | PER IS exponent $\beta$ | annealed 0.4 → 1.0 over 100k steps | annealed 0.4 → 1.0 over 100k steps |
-| Replay capacity | 1,000,000 | 100,000 |
+| Replay capacity | 1,000,000 | 200,000 |
+| Init random frames | 20,000 | 1,600 |
 
-The `der` preset follows the official reference implementation
-[Kaixhin/Rainbow](https://github.com/Kaixhin/Rainbow) (data-efficient
-configuration, endorsed by the paper).
+The `der` preset matches Google's canonical DER *schedule* hyperparameters,
+as pinned in
+[`bigger_better_faster/bbf/configs/der.gin`](https://github.com/google-research/google-research/blob/master/bigger_better_faster/bbf/configs/der.gin)
+(the BBF paper's DER baseline — itself van Hasselt et al. 2019 tuned to match
+the SPR paper's n-step of 10): `n_steps`, `hard_update_freq`,
+`replay_capacity`, `adam_eps`. Encoder, hidden dim and noisy-net $\sigma_0$
+are pinned to the *standard* Rainbow values rather than Kaixhin/Rainbow's
+smaller data-efficient network — comparing two good and one bad W&B run found
+the smaller network/noise combination was not what separated good runs from
+bad, so there was no evidence to justify the smaller network (see
+"Documented deviations" below). `annealing_frames` is DER-specific and much
+shorter than the standard preset's: since epsilon-greedy stacks on top of
+noisy nets (`noisy=true` no longer skips it), the standard preset's
+250k-frame schedule would leave a 100k-frame DER run acting close to
+uniformly randomly for most of training.
 
 ## Update rule
 
@@ -97,11 +112,12 @@ python src/train.py experiment=rainbow/atari100k environment.task=Breakout
 ```
 
 `configs/algorithm/rainbow.yaml` holds the standard (Dopamine-style) Rainbow
-hyperparameters. The **Data-Efficient Rainbow** preset — n-step 20, target
-update every 2000 gradient steps, the smaller 2-layer encoder with hidden dim
-256, and a 100k replay — is a property of the Atari-100k budget, so it lives in
-`configs/experiment/rainbow/atari100k.yaml` rather than in a second algorithm
-config. To run standard Rainbow at a longer budget, drop those overrides.
+hyperparameters. The **Data-Efficient Rainbow** preset — n-step 10, target
+update every 8000 gradient steps, Adam eps 1.5e-4, a 200k replay, and a
+2,000-frame epsilon-greedy anneal — is a property of the Atari-100k budget,
+so it lives in `configs/experiment/rainbow/atari100k.yaml` rather than in a
+second algorithm config (per `AGENTS.md`: no `der.yaml`). To run standard
+Rainbow at a longer budget, drop those overrides.
 
 ## Environment
 
@@ -110,10 +126,9 @@ config. To run standard Rainbow at a longer budget, drop those overrides.
 train and the eval env at once. Max-and-skip and episodic-life (train only) are
 applied via `gymnasium_wrappers` so life loss is checked after each aggregated
 agent step; image preprocessing uses TorchRL transforms. Frame stacking uses
-`CatFrames` (same pattern as `ale.yaml`). Training uses life-loss terminals and
-rewards clipped to $\{-1, 0, 1\}$ (`SignTransform`, applied after `RewardSum`
-so logged episode returns stay unclipped); evaluation uses true game-over
-episodes and raw rewards.
+`CatFrames` (same pattern as `ale.yaml`). Training uses life-loss terminals
+and unclipped rewards (no `SignTransform` — see "Documented deviations"
+below); evaluation uses true game-over episodes and unclipped rewards too.
 
 ## Documented deviations
 
@@ -133,6 +148,28 @@ episodes and raw rewards.
   instead of `[B, 1]`; `step()` unsqueezes it before calling the loss module
   to avoid it mis-broadcasting against the `[B, 1]`-shaped reward/terminated
   tensors.
+- **DER's encoder does not match `der.gin`**: Google's canonical `der.gin`
+  points `BBFAgent.network` at `spr_networks.RainbowDQNNetwork` (BBF's
+  architecture), not a plain DER-specific net. That network belongs to BBF
+  (`src/algorithms/bbf/`), so `experiment=rainbow/atari100k` keeps Rainbow's
+  own `dqn` encoder/hidden-dim/noisy-σ instead — matching the standard
+  `algorithm=rainbow` preset, not Kaixhin/Rainbow's smaller data-efficient
+  CNN either. This preset previously used the smaller Kaixhin-style encoder
+  (`encoder_type: data_efficient`, hidden dim 256, $\sigma_0$ 0.1); comparing
+  W&B runs before/after that switch found the smaller network was not what
+  distinguished good runs from bad (both a good and a bad run shared
+  `encoder_type: dqn`), so there was no evidence to keep the smaller,
+  untested combination. All schedule hyperparameters (n-step, target update
+  period, replay capacity, Adam eps) still match `der.gin` exactly.
+- **`SignTransform` (reward clipping to $\{-1, 0, 1\}$) was removed from
+  training**: the original preset clipped rewards, matching standard
+  DQN/Rainbow practice and C51's fixed `v_min=-10, v_max=10` support.
+  Comparing two good runs and one bad run found the best-performing run had
+  unclipped rewards, same as the bad run — clipping wasn't what separated
+  them — so it was dropped for this preset. If you see C51 value
+  misestimation on a game with larger raw score deltas than Jamesbond,
+  reconsider re-adding `SignTransform` to
+  `configs/environment/atari100k.yaml`.
 
 ## Experimental results
 
@@ -140,4 +177,9 @@ episodes and raw rewards.
 
 | Run | Environment | Config | Seed | Frames | Eval return | Notes |
 |-----|-------------|--------|------|--------|-------------|-------|
-| — | — | — | — | — | — | No finished runs tagged ``template`` yet — see [W&B table](https://wandb.ai/LatentLab/torchrl-hydra-template/table) |
+| [rainbow_Jamesbond_atari100k_2026-08-10_09-28-47](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/nvpamdxd) | ALE/Jamesbond-v5 | `experiment=rainbow/atari100k` | 1 | 100,000 | 243.0 | — |
+| [rainbow_Jamesbond_atari100k_2026-08-10_09-29-13](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/bhg7sd88) | ALE/Jamesbond-v5 | `experiment=rainbow/atari100k` | 2 | 100,000 | 232.0 | — |
+| [rainbow_Jamesbond_atari100k_2026-08-10_12-31-02](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/p142tzbj) | ALE/Jamesbond-v5 | `experiment=rainbow/atari100k` | 3 | 100,000 | 221.0 | — |
+| [rainbow_Jamesbond_atari100k_2026-08-10_12-32-07](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/6zff7y2o) | ALE/Jamesbond-v5 | `experiment=rainbow/atari100k` | 4 | 100,000 | 267.5 | — |
+| [rainbow_Jamesbond_atari100k_2026-08-10_15-23-47](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/yk5wqpew) | ALE/Jamesbond-v5 | `experiment=rainbow/atari100k` | 5 | 100,000 | 240.5 | — |
+| **Mean ± Std** | ALE/Jamesbond-v5 | `experiment=rainbow/atari100k` | — | — | **240.8 ± 15.4** | n=5 seeds |

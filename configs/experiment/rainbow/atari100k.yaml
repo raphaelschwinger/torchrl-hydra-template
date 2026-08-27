@@ -1,9 +1,19 @@
 # @package _global_
 # Data-Efficient Rainbow (van Hasselt et al. 2019) on Atari-100k JamesBond.
-# Matches the data-efficient preset of https://github.com/Kaixhin/Rainbow:
-# n-step 20, target update every 2000 gradient steps, small 2-layer encoder
-# with hidden dim 256. Same class as `algorithm=rainbow` — the preset is a
-# property of the 100k budget, so it lives here.
+# Schedule hyperparameters match Google's canonical DER preset (used as the
+# BBF baseline): https://github.com/google-research/google-research/blob/
+# master/bigger_better_faster/bbf/configs/der.gin — n-step 10, target update
+# every 8000 gradient steps, replay capacity 200k, Adam eps 1.5e-4. Encoder,
+# hidden dim and noisy-net sigma are pinned to `algorithm=rainbow`'s standard
+# values (dqn encoder, 512, 0.5) rather than Kaixhin/Rainbow's smaller
+# data-efficient preset — an empirical comparison across three W&B runs found
+# no benefit from the smaller network; see src/algorithms/rainbow/README.md.
+# `annealing_frames` is shortened to fit the 100k budget: epsilon-greedy now
+# stacks on top of noisy nets (`noisy=true` no longer skips it), so
+# `algorithm=rainbow`'s 250k-frame schedule would leave ~60% of actions
+# random for most of a 100k-frame run.
+# Same class as `algorithm=rainbow` — the preset is a property of the 100k
+# budget, so it lives here.
 # Run another game with: environment.task=Breakout
 defaults:
   - override /algorithm: rainbow
@@ -22,11 +32,14 @@ environment:
 
 algorithm:
   init_random_frames: 1_600
-  hard_update_freq: 2_000   # target net <- online every N gradient steps
-  replay_capacity: 100_000
-  encoder_type: data_efficient
-  hidden_dim: 256
-  n_steps: 20
+  hard_update_freq: 8_000   # target net <- online every N gradient steps
+  replay_capacity: 200_000
+  encoder_type: dqn
+  hidden_dim: 512
+  noisy_std: 0.5
+  n_steps: 10
+  adam_eps: 1.5e-4
+  annealing_frames: 2_000   # epsilon floor reached before warm-up (1_600) ends
 
 trainer:
   total_frames: 100_000

@@ -204,6 +204,7 @@ python src/train.py experiment=bbf/atari100k \
 | [bbf_Jamesbond_2026-08-03_10-06-24](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/vwbpoxw5) | ALE/Jamesbond-v5 | `experiment=bbf/atari100k` | 1 | 100,000 | 1,251.0 | — |
 | [bbf_Jamesbond_2026-08-03_10-11-48](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/dc2e91w2) | ALE/Jamesbond-v5 | `experiment=bbf/atari100k` | 2 | 100,000 | 702.0 | — |
 | [bbf_Jamesbond_2026-08-03_11-59-19](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/xxxxqws7) | ALE/Jamesbond-v5 | `experiment=bbf/atari100k` | 3 | 100,000 | 524.5 | — |
+| **Mean ± Std** | ALE/Jamesbond-v5 | `experiment=bbf/atari100k` | — | — | **825.8 ± 309.2** | n=3 seeds |
 
 
 *No runs recorded yet. This table is regenerated from W&B runs tagged* `template`

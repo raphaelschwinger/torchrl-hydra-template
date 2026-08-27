@@ -25,14 +25,16 @@ gym_kwargs:
 # config root, so `environment.task=Breakout` moves both envs at once. The
 # literal `task` above is inert in that position — it exists so this config
 # still resolves standalone (`python src/eval.py environment=atari100k_eval`).
+#
+# Gym-level random no-ops (mirrors the train env), 84x84 grayscale frames
+# stacked 4 deep, and unclipped rewards.
 gymnasium_wrappers:
   - _target_: src.environments.atari_wrappers.MaxAndSkipEnv
     skip: 4
+  - _target_: src.environments.atari_wrappers.NoopResetEnv
+    noop_max: 30
 
 transforms:
-  - _target_: torchrl.envs.NoopResetEnv
-    noops: 30
-    random: true
   - _target_: torchrl.envs.ToTensorImage
   - _target_: torchrl.envs.GrayScale
   - _target_: torchrl.envs.Resize

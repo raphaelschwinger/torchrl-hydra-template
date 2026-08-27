@@ -17,11 +17,15 @@ more frequent target updates, and the paper's smaller encoder
 """
 from __future__ import annotations
 
+import math
+from types import MethodType
 from typing import Callable, Literal
 
 import torch
 import torch.nn as nn
-from tensordict.nn import TensorDictSequential
+import torch.nn.functional as F
+from tensordict import TensorDict
+from tensordict.nn import TensorDictModuleBase, TensorDictSequential
 from torchrl.data import (
     LazyTensorStorage,
     TensorDictPrioritizedReplayBuffer,
@@ -29,6 +33,7 @@ from torchrl.data import (
 )
 from torchrl.envs import EnvBase
 from torchrl.envs.transforms import MultiStepTransform
+from torchrl.envs.transforms.rb_transforms import _multi_step_func
 from torchrl.modules import (
     ConvNet,
     DistributionalQValueActor,
@@ -37,18 +42,19 @@ from torchrl.modules import (
     MLP,
     NoisyLinear,
     QValueActor,
-    reset_noise,
 )
 from torchrl.objectives import DistributionalDQNLoss, DQNLoss, HardUpdate
 
 from src.algorithms.dqn.dqn import DQNAlgorithm
+from src.components.exploration import FixedEpsilonGreedy
 
-# Conv encoder shapes. "dqn" is the standard NatureDQN encoder (Mnih et al.
-# 2015, matches src.components.networks.NatureDQN); "data_efficient" is the smaller
-# 2-layer encoder from Data-Efficient Rainbow (van Hasselt et al. 2019),
-# tuned for the 100k-frame Atari-100k budget.
+# Conv encoder shapes. "dqn" follows the BBF/Dopamine Atari encoder with
+# Flax/JAX-style SAME padding; "data_efficient" is the smaller 2-layer encoder
+# from Data-Efficient Rainbow (van Hasselt et al. 2019), tuned for the 100k-frame
+# Atari-100k budget.
 _ENCODER_CNN_KWARGS: dict[str, dict] = {
     "dqn": {
+        "same_padding": True,
         "num_cells": [32, 64, 64],
         "kernel_sizes": [8, 4, 3],
         "strides": [4, 2, 1],
@@ -63,6 +69,208 @@ _ENCODER_CNN_KWARGS: dict[str, dict] = {
 }
 
 
+class _FlattenFeatures(nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() <= 1:
+            return x
+        return x.flatten(1)
+
+
+def _pair(value: int | tuple[int, int]) -> tuple[int, int]:
+    if isinstance(value, tuple):
+        return value
+    return (value, value)
+
+
+class _SamePadConv2d(nn.Module):
+    """Conv2d with Flax/JAX-style SAME padding for Atari encoders."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int | tuple[int, int],
+        stride: int | tuple[int, int],
+    ) -> None:
+        super().__init__()
+        self.kernel_size = _pair(kernel_size)
+        self.stride = _pair(stride)
+        self.conv = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=self.kernel_size,
+            stride=self.stride,
+            padding=0,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        in_h, in_w = x.shape[-2:]
+        out_h = math.ceil(in_h / self.stride[0])
+        out_w = math.ceil(in_w / self.stride[1])
+        pad_h = max((out_h - 1) * self.stride[0] + self.kernel_size[0] - in_h, 0)
+        pad_w = max((out_w - 1) * self.stride[1] + self.kernel_size[1] - in_w, 0)
+        pad_top = pad_h // 2
+        pad_bottom = pad_h - pad_top
+        pad_left = pad_w // 2
+        pad_right = pad_w - pad_left
+        if pad_h or pad_w:
+            x = F.pad(x, (pad_left, pad_right, pad_top, pad_bottom))
+        return self.conv(x)
+
+
+class _SamePaddingConvNet(nn.Module):
+    """Nature-DQN CNN with Flax/JAX SAME padding."""
+
+    def __init__(
+        self,
+        *,
+        in_channels: int,
+        num_cells: list[int],
+        kernel_sizes: list[int],
+        strides: list[int],
+        activation_class: type[nn.Module] = nn.ReLU,
+        activation_kwargs: dict | list[dict] | None = None,
+    ) -> None:
+        super().__init__()
+        layers: list[nn.Module] = []
+        current_channels = in_channels
+        for i, (out_channels, kernel_size, stride) in enumerate(
+            zip(num_cells, kernel_sizes, strides)
+        ):
+            layers.append(
+                _SamePadConv2d(
+                    current_channels,
+                    out_channels,
+                    kernel_size=kernel_size,
+                    stride=stride,
+                )
+            )
+            if isinstance(activation_kwargs, list):
+                kwargs = activation_kwargs[i] if i < len(activation_kwargs) else {}
+            else:
+                kwargs = activation_kwargs or {}
+            layers.append(activation_class(**kwargs))
+            current_channels = out_channels
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_shape = x.shape[:-3]
+        x = x.reshape(-1, *x.shape[-3:])
+        out = self.layers(x).flatten(1)
+        if batch_shape:
+            return out.reshape(*batch_shape, out.shape[-1])
+        return out.reshape(out.shape[-1])
+
+
+class InclusiveDoneMultiStepTransform(MultiStepTransform):
+    """TorchRL MultiStepTransform with n-step bootstrap terminals.
+
+    TorchRL's transform keeps the original done keys and exposes a separate
+    ``nonterminal`` key. DQN losses consume ``next.done`` though, so a terminal
+    on the last reward inside the n-step target would otherwise still bootstrap.
+    """
+
+    def _inv_call(self, tensordict: TensorDict) -> TensorDict | None:
+        if not self._validated:
+            self._validate()
+
+        total_cat = self._append_tensordict(tensordict)
+        if total_cat.shape[-1] <= self.n_steps:
+            return None
+
+        out = _multi_step_func(
+            total_cat,
+            done_key=self.done_key,
+            done_keys=self.done_keys,
+            reward_keys=self.reward_keys,
+            mask_key=self.mask_key,
+            n_steps=self.n_steps,
+            gamma=self.gamma,
+        )
+        out = out[..., : -self.n_steps]
+        for done_key in self.done_keys:
+            existing = out.get(("next", done_key), default=None)
+            if existing is None:
+                continue
+            inclusive_done = self._inclusive_done(total_cat, done_key)[..., : -self.n_steps]
+            value = inclusive_done
+            while value.ndim < existing.ndim:
+                value = value.unsqueeze(-1)
+            out.set(("next", done_key), value.expand_as(existing).to(existing.dtype))
+        return out
+
+    def _inclusive_done(self, tensordict: TensorDict, done_key: str) -> torch.Tensor:
+        done = tensordict.get(("next", done_key)).bool()
+        if done.shape != tensordict.shape:
+            if done.shape[-1] == 1 and done.shape[:-1] == tensordict.shape:
+                done = done.squeeze(-1)
+            else:
+                done = done.reshape(tensordict.shape)
+        padded = F.pad(done.to(torch.int8), (0, self.n_steps - 1), value=0)
+        return padded.unfold(-1, self.n_steps, 1).bool().any(dim=-1)
+
+
+class _CnnRainbowQNet(nn.Module):
+    """Rainbow head for explicit layer classes that TorchRL cannot lazy-build."""
+
+    def __init__(
+        self,
+        *,
+        obs_shape: tuple[int, ...],
+        cnn_kwargs: dict,
+        same_padding: bool = False,
+        num_actions: int,
+        hidden_dim: int,
+        distributional: bool,
+        num_atoms: int,
+        dueling: bool,
+        layer_class: type[nn.Module],
+        layer_kwargs: dict | None,
+    ) -> None:
+        super().__init__()
+        self.num_actions = num_actions
+        self.num_atoms = num_atoms
+        self.distributional = distributional
+        self.dueling = dueling
+        if same_padding:
+            self.encoder = _SamePaddingConvNet(
+                in_channels=obs_shape[0],
+                **cnn_kwargs,
+            )
+        else:
+            self.encoder = ConvNet(**cnn_kwargs)
+        with torch.no_grad():
+            latent = self.encoder(torch.zeros(1, *obs_shape))
+        kwargs = layer_kwargs or {}
+        self.projection = nn.Sequential(
+            _FlattenFeatures(),
+            layer_class(int(latent.flatten(1).shape[-1]), hidden_dim, **kwargs),
+        )
+        head_out = num_actions * num_atoms if distributional else num_actions
+        self.advantage = layer_class(hidden_dim, head_out, **kwargs)
+        self.value = None
+        if dueling:
+            value_out = num_atoms if distributional else 1
+            self.value = layer_class(hidden_dim, value_out, **kwargs)
+
+    def forward(self, pixels: torch.Tensor) -> torch.Tensor:
+        h = F.relu(self.projection(self.encoder(pixels)))
+        if self.distributional:
+            adv = self.advantage(h).view(-1, self.num_actions, self.num_atoms)
+            if self.dueling and self.value is not None:
+                value = self.value(h).view(-1, 1, self.num_atoms)
+                logits = value + adv - adv.mean(dim=1, keepdim=True)
+            else:
+                logits = adv
+            return logits.transpose(1, 2)
+
+        q_values = self.advantage(h)
+        if self.dueling and self.value is not None:
+            value = self.value(h)
+            q_values = value + q_values - q_values.mean(dim=1, keepdim=True)
+        return q_values
+
+
 class RainbowAlgorithm(DQNAlgorithm):
     """DQN + double Q-learning + dueling + PER + multi-step + C51 + noisy nets."""
 
@@ -72,11 +280,14 @@ class RainbowAlgorithm(DQNAlgorithm):
         *,
         obs_key: str = "pixels",
         lr: float = 1e-4,
+        adam_eps: float = 1e-8,
+        weight_decay: float = 0.0,
         gamma: float = 0.99,
         batch_size: int = 32,
         max_grad_norm: float = 10.0,
         eps_start: float = 1.0,
         eps_end: float = 0.01,
+        eps_eval: float = 0.001,
         annealing_frames: int = 250_000,
         frames_per_batch: int = 4,
         init_random_frames: int = 20_000,
@@ -141,6 +352,7 @@ class RainbowAlgorithm(DQNAlgorithm):
         self.noisy = noisy
         self.noisy_std = noisy_std
         self.eval_noise = eval_noise
+        self.eps_eval = eps_eval
         self.double_dqn = double_dqn
         self.distributional = distributional
         self.num_atoms = num_atoms
@@ -153,6 +365,8 @@ class RainbowAlgorithm(DQNAlgorithm):
         self.prb_beta_frames = prb_beta_frames
         self.prb_eps = prb_eps
         self.n_steps = n_steps
+        self.adam_eps = adam_eps
+        self.weight_decay = weight_decay
 
     # ------------------------------------------------------------------
     # Setup
@@ -162,6 +376,7 @@ class RainbowAlgorithm(DQNAlgorithm):
         proof_env = make_env()
         obs_shape = tuple(proof_env.observation_spec[self.obs_key].shape)
         action_spec = proof_env.action_spec
+        self.action_spec = action_spec
         num_actions = int(action_spec.space.n)
         proof_env.close()
 
@@ -172,12 +387,31 @@ class RainbowAlgorithm(DQNAlgorithm):
         #    (Bellemare et al. 2017) reshapes the output to
         #    [*, num_atoms, num_actions] so raw Q-values become per-atom logits.
         layer_class = NoisyLinear if self.noisy else nn.Linear
-        layer_kwargs = {"std_init": self.noisy_std} if self.noisy else None
+        layer_kwargs = (
+            {
+                "std_init": self.noisy_std,
+            }
+            if self.noisy
+            else None
+        )
         out_features = (self.num_atoms, num_actions) if self.distributional else num_actions
         out_features_value = (self.num_atoms, 1) if self.distributional else 1
         cnn_kwargs = dict(_ENCODER_CNN_KWARGS[self.encoder_type])
-
-        if self.dueling:
+        same_padding = bool(cnn_kwargs.pop("same_padding", False))
+        if same_padding:
+            q_net = _CnnRainbowQNet(
+                obs_shape=obs_shape,
+                cnn_kwargs=cnn_kwargs,
+                same_padding=same_padding,
+                num_actions=num_actions,
+                hidden_dim=self.hidden_dim,
+                distributional=self.distributional,
+                num_atoms=self.num_atoms,
+                dueling=self.dueling,
+                layer_class=layer_class,
+                layer_kwargs=layer_kwargs,
+            )
+        elif self.dueling:
             q_net = DuelingCnnDQNet(
                 out_features=out_features,
                 out_features_value=out_features_value,
@@ -209,6 +443,8 @@ class RainbowAlgorithm(DQNAlgorithm):
         # parameters.
         with torch.no_grad():
             q_net(torch.zeros(1, *obs_shape, device=self.device))
+        if self.noisy:
+            _sample_noisy_linear_on_forward(q_net)
 
         # 2. Actor wrapper.
         if self.distributional:
@@ -226,23 +462,21 @@ class RainbowAlgorithm(DQNAlgorithm):
                 in_keys=[self.obs_key],
             ).to(self.device)
 
-        # 3. Exploration. Noisy nets (Fortunato et al. 2018) replace
-        #    epsilon-greedy entirely: `NoisyLinear` samples fresh weight noise
-        #    only in `nn.Module.training` mode (auto-disabled by `.eval()`),
-        #    so the same actor serves as both the explore and greedy policy.
+        # 3. Exploration. DER keeps epsilon-greedy on top of NoisyNet.
+        self.greedy_module = EGreedyModule(
+            spec=action_spec,
+            eps_init=self.eps_start,
+            eps_end=self.eps_end,
+            annealing_num_steps=self.annealing_frames,
+            device=self.device,
+        )
         if self.noisy:
-            self.greedy_module = None
             self.q_actor.train()
-            self._explore_policy = self.q_actor
-        else:
-            self.greedy_module = EGreedyModule(
-                spec=action_spec,
-                eps_init=self.eps_start,
-                eps_end=self.eps_end,
-                annealing_num_steps=self.annealing_frames,
-                device=self.device,
-            )
-            self._explore_policy = TensorDictSequential(self.q_actor, self.greedy_module)
+        self._explore_policy = TensorDictSequential(
+            self.q_actor,
+            self.greedy_module,
+            _SqueezeUnbatchedActionModule(),
+        )
 
         # 4. Replay buffer. Prioritized sampling (Schaul et al. 2016) biases
         #    sampling toward high-TD-error transitions; the importance-sampling
@@ -252,7 +486,7 @@ class RainbowAlgorithm(DQNAlgorithm):
         #    `MultiStepTransform`, which is unbiased by collector-batch
         #    boundaries (unlike the collector-side `MultiStep` postproc).
         storage = LazyTensorStorage(max_size=self.replay_capacity, device="cpu")
-        transform = MultiStepTransform(n_steps=self.n_steps, gamma=self.gamma) if self.n_steps > 1 else None
+        transform = InclusiveDoneMultiStepTransform(n_steps=self.n_steps, gamma=self.gamma) if self.n_steps > 1 else None
         if self.prioritized:
             self.replay_buffer = TensorDictPrioritizedReplayBuffer(
                 alpha=self.prb_alpha,
@@ -284,7 +518,15 @@ class RainbowAlgorithm(DQNAlgorithm):
         self.target_updater = HardUpdate(
             self.loss_module, value_network_update_interval=self.hard_update_freq
         )
-        self.optimizer = torch.optim.Adam(self.q_actor.parameters(), lr=self.lr)
+        self.optimizer = self._make_optimizer()
+
+    def _make_optimizer(self) -> torch.optim.Optimizer:
+        return torch.optim.Adam(
+            self.q_actor.parameters(),
+            lr=self.lr,
+            eps=self.adam_eps,
+            weight_decay=self.weight_decay,
+        )
 
     # ------------------------------------------------------------------
     # Training
@@ -292,22 +534,19 @@ class RainbowAlgorithm(DQNAlgorithm):
 
     def step(self, batch) -> dict[str, float]:
         batch = batch.reshape(-1)
-        if self.greedy_module is not None:
-            self.greedy_module.step(batch.numel())
+        _squeeze_policy_singletons(batch)
+        _canonicalize_one_hot_action(batch, self.action_spec)
         self.replay_buffer.extend(batch)
         self._collected_frames += batch.numel()
 
         if self._collected_frames < self.init_random_frames:
-            return {"train/epsilon": float(self.greedy_module.eps) if self.greedy_module else 0.0}
+            return {"train/epsilon": 1.0}
+        self.greedy_module.step(batch.numel())
 
         losses = torch.zeros(self.num_updates, device=self.device)
         for j in range(self.num_updates):
-            if self.noisy:
-                # Fortunato et al. (2018): resample noisy-layer noise once per
-                # gradient step (the reference schedule), not once per action.
-                self.q_actor.apply(reset_noise)
-
             sample = self.replay_buffer.sample(self.batch_size).to(self.device)
+            _canonicalize_one_hot_action(sample, self.action_spec)
             # MultiStepTransform writes "steps_to_next_obs" with shape [B]
             # instead of [B, 1]; DQNLoss/DistributionalDQNLoss broadcast it
             # directly against [B, 1]-shaped reward/terminated, so a bare [B]
@@ -350,13 +589,88 @@ class RainbowAlgorithm(DQNAlgorithm):
     # ------------------------------------------------------------------
 
     def get_policy(self):
-        if self.noisy:
-            # Fortunato et al. (2018): official Rainbow evaluates with noise
-            # still sampled by default (`eval_noise=True`); NoisyLinear reads
-            # `nn.Module.training` to decide whether to sample or use the
-            # mean weights. This mutates shared state, which periodic
-            # evaluation would otherwise leak into training —
-            # `BaseTrainer.evaluate()` snapshots and restores every algorithm
-            # module's `.training` flag around the rollout.
-            self.q_actor.train(mode=self.eval_noise)
-        return self.q_actor
+        # NoisyLinear reads `nn.Module.training` to decide whether to sample
+        # fresh weight noise or use the mean weights; `.eval()` also disables
+        # dropout-like behaviour in any other submodule. This mutates shared
+        # state, which periodic evaluation would otherwise leak into training
+        # — `BaseTrainer.evaluate()` snapshots and restores every algorithm
+        # module's `.training` flag around the rollout.
+        self.q_actor.eval()
+        return TensorDictSequential(
+            self.q_actor,
+            FixedEpsilonGreedy(self.action_spec, self.eps_eval),
+            _SqueezePolicySingletonsModule(),
+        )
+
+
+def _sample_noisy_linear_on_forward(module: nn.Module) -> None:
+    def forward_with_fresh_noise(layer: NoisyLinear, input: torch.Tensor) -> torch.Tensor:
+        if not layer.training:
+            return F.linear(input, layer.weight_mu, layer.bias_mu)
+        epsilon_in = layer._scale_noise(layer.in_features)
+        epsilon_out = layer._scale_noise(layer.out_features)
+        weight = layer.weight_mu + layer.weight_sigma * epsilon_out.outer(epsilon_in)
+        bias = None
+        if layer.bias_mu is not None:
+            bias = layer.bias_mu + layer.bias_sigma * epsilon_out
+        return F.linear(input, weight, bias)
+
+    for child in module.modules():
+        if isinstance(child, NoisyLinear):
+            child.forward = MethodType(forward_with_fresh_noise, child)
+
+
+def _squeeze_policy_singletons(batch) -> None:
+    """Keep collector output shapes stable before writing them to replay."""
+    for key in ("action", "action_value"):
+        value = batch.get(key, default=None)
+        if value is not None and value.dim() > 2 and value.shape[-2] == 1:
+            batch.set(key, value.squeeze(-2))
+
+
+def _canonicalize_one_hot_action(batch, action_spec) -> None:
+    action = batch.get("action", default=None)
+    if action is None or action.dim() == 0:
+        return
+    spec_shape = tuple(getattr(action_spec, "shape", ()))
+    if not spec_shape:
+        return
+    num_actions = int(spec_shape[-1])
+    if num_actions <= 1 or action.shape[-1] != num_actions:
+        return
+    indices = action.argmax(dim=-1)
+    canonical = F.one_hot(indices, num_classes=num_actions).to(dtype=action.dtype)
+    batch.set("action", canonical)
+
+
+class _SqueezePolicySingletonsModule(TensorDictModuleBase):
+    """Normalize policy output shapes before the collector stacks them."""
+
+    def __init__(self) -> None:
+        self.in_keys = []
+        self.out_keys = []
+        super().__init__()
+
+    def forward(self, tensordict: TensorDict) -> TensorDict:
+        _squeeze_policy_singletons(tensordict)
+        return tensordict
+
+
+class _SqueezeUnbatchedActionModule(TensorDictModuleBase):
+    """Match the unbatched action spec shape during collection."""
+
+    def __init__(self) -> None:
+        self.in_keys = []
+        self.out_keys = []
+        super().__init__()
+
+    def forward(self, tensordict: TensorDict) -> TensorDict:
+        action = tensordict.get("action", default=None)
+        if (
+            action is not None
+            and len(tensordict.batch_size) == 0
+            and action.dim() > 1
+            and action.shape[0] == 1
+        ):
+            tensordict.set("action", action.squeeze(0))
+        return tensordict

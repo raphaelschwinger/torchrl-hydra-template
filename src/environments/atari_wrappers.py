@@ -14,6 +14,32 @@ from tensordict import TensorDictBase
 from torchrl.envs.transforms import Transform
 
 
+class NoopResetEnv(gym.Wrapper):
+    """Start real games from a randomized state using 1..noop_max NOOPs."""
+
+    def __init__(self, env: gym.Env, noop_max: int = 30) -> None:
+        super().__init__(env)
+        self.noop_max = noop_max
+
+    def reset(
+        self,
+        *,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> tuple[Any, dict[str, Any]]:
+        observation, info = self.env.reset(seed=seed, options=options)
+        noops = (
+            int(self.np_random.integers(1, self.noop_max + 1))
+            if self.noop_max > 0
+            else 0
+        )
+        for _ in range(noops):
+            observation, _, terminated, truncated, info = self.env.step(0)
+            if terminated or truncated:
+                observation, info = self.env.reset(options=options)
+        return observation, info
+
+
 class MaxAndSkipEnv(gym.Wrapper):
     """Repeat actions and max-pool the final two raw Atari frames."""
 
@@ -43,7 +69,35 @@ class MaxAndSkipEnv(gym.Wrapper):
 
 
 class EpisodicLifeEnv(gym.Wrapper):
-    """Expose life loss as terminal while preserving the underlying game."""
+    """Expose life loss as terminal while preserving the underlying game.
+
+    This must stay a ``gym.Wrapper``; it cannot be ported to a TorchRL
+    ``Transform`` without weakening its semantics.
+
+    1. **Reset substitution.** On life loss (but not game over), ``reset()``
+       below calls ``self.env.step(0)`` instead of ``self.env.reset()``, so
+       the underlying ALE game keeps running under a "soft" episode boundary.
+       A ``Transform`` cannot do this: ``TransformedEnv._reset()``
+       unconditionally calls ``base_env._reset()`` *before* any transform's
+       ``_reset`` hook runs, so the real reset has already happened by the
+       time a transform could react. Only something that owns step/reset
+       dispatch directly -- a ``gym.Wrapper``, not a ``Transform`` sitting on
+       top of an already-built ``TransformedEnv`` -- can intercept and
+       redirect that call before it fires.
+    2. **The TorchRL-native alternative is deliberately weaker, and this repo
+       already uses it elsewhere.** ``torchrl.envs.EndOfLifeTransform``
+       (see ``configs/environment/ale.yaml``) sidesteps the reset-
+       substitution problem entirely by not resetting on life loss at all:
+       it tags the transition with an ``"end-of-life"`` key for the loss
+       module's TD bootstrap and leaves episode boundaries at real game
+       over. That's correct for the standard ALE protocol, but it is *not*
+       equivalent to this class -- it never fragments a training episode, so
+       it doesn't reset ``RewardSum``/``StepCounter`` or segment replay-buffer
+       trajectories at life loss the way ``EpisodicLifeEnv`` does. Atari-100k
+       (BBF/DER) needs that stronger, true-episode-boundary behaviour to
+       match BBF-pytorch, which is why it keeps this gym wrapper instead of
+       ``EndOfLifeTransform``.
+    """
 
     def __init__(self, env: gym.Env) -> None:
         super().__init__(env)
@@ -103,7 +157,7 @@ class MaxAndSkipTransform(Transform):
             raise ValueError("frame_skip must be >= 1.")
         self.frame_skip = frame_skip
 
-    def _max_pool_pixels(self, parent, obs_buffer: list[torch.Tensor]) -> torch.Tensor:
+    def _max_pool_pixels(self, obs_buffer: deque[torch.Tensor]) -> torch.Tensor:
         if len(obs_buffer) == 2:
             return torch.maximum(obs_buffer[0], obs_buffer[1])
         return obs_buffer[-1]
@@ -120,7 +174,12 @@ class MaxAndSkipTransform(Transform):
         reward_key = parent.reward_key
         pixels_key = getattr(parent, "pixel_key", "pixels")
         reward = next_tensordict.get(reward_key)
-        obs_buffer = [next_tensordict.get(pixels_key)]
+        # maxlen=2: only the final two raw frames are ever max-pooled, matching
+        # MaxAndSkipEnv. Without the bound, obs_buffer grows to frame_skip
+        # frames and `_max_pool_pixels` silently falls back to "last frame
+        # only" for any frame_skip != 2.
+        obs_buffer: deque[torch.Tensor] = deque(maxlen=2)
+        obs_buffer.append(next_tensordict.get(pixels_key))
 
         for _ in range(self.frame_skip - 1):
             terminated = next_tensordict.get("terminated")
@@ -133,5 +192,5 @@ class MaxAndSkipTransform(Transform):
 
         return next_tensordict.set(
             pixels_key,
-            self._max_pool_pixels(parent, obs_buffer),
+            self._max_pool_pixels(obs_buffer),
         ).set(reward_key, reward)

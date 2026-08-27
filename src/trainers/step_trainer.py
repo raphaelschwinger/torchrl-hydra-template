@@ -27,6 +27,7 @@ own x-axis.
 from __future__ import annotations
 
 import time
+from math import prod
 
 from tensordict import TensorDict
 
@@ -165,13 +166,22 @@ def _batch_metrics(
     action_value = flat.get("action_value", default=None)
     action = flat.get("action", default=None)
     if action_value is not None and action is not None:
-        if action.dim() == action_value.dim():
+        if action_value.dim() > 2 and action_value.shape[-2] == 1:
+            action_value = action_value.squeeze(-2)
+        if action_value.dim() > 2:
+            return episode_rewards, episode_lengths, out
+        while action.dim() > 1 and action.shape[-1] == 1:
+            action = action.squeeze(-1)
+        if action.shape == action_value.shape:
             out["train/q_values"] = (
                 (action_value * action).sum().item() / flat.numel()
             )
         else:
+            if action.numel() != prod(action_value.shape[:-1]):
+                return episode_rewards, episode_lengths, out
+            action_index = action.long().reshape(*action_value.shape[:-1], 1)
             out["train/q_values"] = (
-                action_value.gather(-1, action.long().unsqueeze(-1))
+                action_value.gather(-1, action_index)
                 .mean()
                 .item()
             )

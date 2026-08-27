@@ -54,7 +54,18 @@ in [`src/environments/atari_wrappers.py`](src/environments/atari_wrappers.py))
 so life loss is evaluated after each aggregated agent step; the rest of the
 stack is TorchRL transforms (`NoopResetEnv`, `GrayScale`, `Resize`, `CatFrames`,
 …). A TorchRL `MaxAndSkipTransform` is also available when episodic-life is not
-required.
+required. `EpisodicLifeEnv` itself cannot become a `Transform`:
+`TransformedEnv._reset()` always resets the base env before any transform
+runs, so a transform has no hook to substitute a `step()` for that reset the
+way `EpisodicLifeEnv.reset()` does on life loss (see its docstring for the
+full argument). `torchrl.envs.EndOfLifeTransform` is the TorchRL-native
+alternative, but it only tags a bootstrap signal instead of ending the
+episode -- that's why `ale.yaml` uses it while `atari100k.yaml` keeps the gym
+wrapper. `scripts/verify_transform_parity.py` checks the other two pairs
+empirically against a real ALE env: `MaxAndSkipEnv`/`MaxAndSkipTransform` are
+byte-for-byte identical; `NoopResetEnv`/`torchrl.envs.NoopResetEnv` are not
+(the torchrl transform samples random actions during its no-op phase, not the
+literal NOOP), so they are not interchangeable despite the shared name.
 Rainbow with standard (Dopamine-style) hyperparameters is available as
 `algorithm=rainbow`; the official data-efficient preset (DER) is applied by
 `experiment=rainbow/atari100k`, since it is a property of the 100k budget.
@@ -660,9 +671,9 @@ python src/train.py experiment=tdmpc2/dmc environment.task=walker-walk
 
 python scripts/update_algo_results.py              # refresh algo README benchmark tables (W&B tag: template)
 
-# Cross-algorithm sweep: 6 experiments x 3 seeds, queue-balanced over GPUs.
+# Cross-algorithm sweep: 7 experiments x 3 seeds, queue-balanced over GPUs.
 # Resumable (markers in logs/benchmarks/done/); tags runs `template`.
-./scripts/run_benchmarks.sh --dry-run              # print the 18 commands
+./scripts/run_benchmarks.sh --dry-run              # print the 21 commands
 ./scripts/run_benchmarks.sh --smoke                # tiny budgets; validates every spec
 ./scripts/run_benchmarks.sh --gpus 2,3             # the real sweep
 
@@ -673,7 +684,7 @@ python scripts/update_algo_results.py              # refresh algo README benchma
 # copies PNGs + tables into docs/figures/, which docs/evaluation.md embeds.
 ./scripts/make_figures.sh                          # every group, tag `template`
 ./scripts/make_figures.sh --group atari100k        # one comparison group
-./scripts/make_figures.sh --tag template-v2 --full --publish   # regenerate docs/evaluation.md figures
+./scripts/make_figures.sh --full --publish         # regenerate docs/evaluation.md figures
 pytest tests/test_smoke.py -v
 
 # Evaluate an official TD-MPC2 checkpoint (see src/algorithms/tdmpc2/README.md):

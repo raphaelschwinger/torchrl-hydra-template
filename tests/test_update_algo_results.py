@@ -176,12 +176,60 @@ def test_row_to_markdown():
         seed=42,
         frames=500_100,
         eval_return="500.0",
+        eval_return_value=500.0,
         notes="—",
     )
     md = row_to_markdown(row)
     assert "[dqn_cartpole_2025-01-01](" in md
     assert "`experiment=dqn/gym`" in md
     assert "500,100" in md
+
+
+def _row(environment, config, seed, value, run_name=None) -> ResultRow:
+    return ResultRow(
+        run_name=run_name or f"run-{environment}-{config}-{seed}",
+        run_url="https://wandb.ai/LatentLab/torchrl-hydra-template/runs/abc123",
+        environment=environment,
+        config=config,
+        seed=seed,
+        frames=100_000,
+        eval_return=str(value),
+        eval_return_value=value,
+        notes="—",
+    )
+
+
+def test_build_table_adds_mean_std_summary_row_per_group():
+    rows = [
+        _row("Jamesbond-v5", "experiment=rainbow/atari100k", 1, 243.0),
+        _row("Jamesbond-v5", "experiment=rainbow/atari100k", 2, 232.0),
+        _row("Jamesbond-v5", "experiment=rainbow/atari100k", 3, 221.0),
+        _row("Jamesbond-v5", "experiment=rainbow/atari100k", 4, 267.5),
+        _row("Jamesbond-v5", "experiment=rainbow/atari100k", 5, 240.5),
+    ]
+    table = build_table(rows)
+    assert "**Mean ± Std**" in table
+    assert "240.8 ± 15.4" in table
+    assert "n=5 seeds" in table
+
+
+def test_build_table_summary_row_is_per_environment_config_group():
+    rows = [
+        _row("Jamesbond-v5", "experiment=ppo/ale", 1, 30.0),
+        _row("Jamesbond-v5", "experiment=ppo/ale", 2, 40.0),
+        _row("cheetah-run", "experiment=ppo/dmc", 1, 400.0),
+        _row("cheetah-run", "experiment=ppo/dmc", 2, 600.0),
+    ]
+    table = build_table(rows)
+    assert table.count("**Mean ± Std**") == 2
+    assert "35.0 ± 5.00" in table
+    assert "500.0 ± 100.0" in table
+
+
+def test_build_table_skips_summary_row_for_single_run_group():
+    rows = [_row("CartPole-v1", "experiment=dqn/gym", 1, 500.0)]
+    table = build_table(rows)
+    assert "**Mean ± Std**" not in table
 
 
 def test_replace_results_table():

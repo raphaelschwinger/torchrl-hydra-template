@@ -61,7 +61,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from tensordict import TensorDict
-from tensordict.nn import TensorDictModule, TensorDictModuleBase, TensorDictSequential
+from tensordict.nn import TensorDictModule, TensorDictSequential
 from torchrl.data import LazyTensorStorage, TensorDictReplayBuffer
 from torchrl.data.replay_buffers import PrioritizedSliceSampler, SliceSampler
 from torchrl.envs import EnvBase
@@ -69,6 +69,7 @@ from torchrl.modules import EGreedyModule, QValueActor
 
 from src.algorithms.base import BaseAlgorithm, CollectorConfig, TrainingState
 from src.algorithms.bbf.networks import BBFNetwork
+from src.components.exploration import FixedEpsilonGreedy
 
 
 class BBFAlgorithm(BaseAlgorithm):
@@ -592,28 +593,6 @@ class BBFAlgorithm(BaseAlgorithm):
             self._grad_steps = int(state.extra.get("grad_steps", 0))
             self._steps_since_reset = int(state.extra.get("steps_since_reset", 0))
             self._num_resets = int(state.extra.get("num_resets", 0))
-
-
-class FixedEpsilonGreedy(TensorDictModuleBase):
-    """Evaluation ε-greedy (ε = 0.001 in BBF).
-
-    Unlike ``EGreedyModule`` it also acts under ``ExplorationType.MODE`` (used
-    by ``BaseTrainer.evaluate``). The tiny ε matters on Atari: a fully
-    deterministic policy can freeze (e.g. never pressing FIRE to launch the
-    Breakout ball)."""
-
-    def __init__(self, action_spec, eps: float) -> None:
-        self.in_keys = ["action"]
-        self.out_keys = ["action"]
-        super().__init__()
-        self.action_spec = action_spec
-        self.eps = eps
-
-    def forward(self, tensordict: TensorDict) -> TensorDict:
-        if self.eps > 0 and float(torch.rand(())) < self.eps:
-            random_action = self.action_spec.rand().to(tensordict["action"].device)
-            tensordict.set("action", random_action)
-        return tensordict
 
 
 def _random_shift(x: torch.Tensor, pad: int) -> torch.Tensor:

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Benchmark sweep: 6 experiments x 3 seeds, load-balanced across GPUs.
+# Benchmark sweep: 7 experiments x 3 seeds, load-balanced across GPUs.
 #
 # Workers pull from a shared queue rather than getting a fixed slice, because
 # the jobs differ in cost by more than an order of magnitude (BBF's 100k steps
@@ -10,12 +10,12 @@
 # Resumable: every finished run drops a marker in $BENCH_DIR/done/, and reruns
 # skip it. Kill the script, restart it, and it picks up where it left off.
 #
-#   ./scripts/run_benchmarks.sh --dry-run           # print the 18 commands
+#   ./scripts/run_benchmarks.sh --dry-run           # print the 21 commands
 #   ./scripts/run_benchmarks.sh --smoke             # tiny budgets, validates specs
 #   ./scripts/run_benchmarks.sh                     # the real sweep on GPUs 2,3
 #   ./scripts/run_benchmarks.sh --only bbf,tdmpc2   # subset by job name
 #   ./scripts/run_benchmarks.sh --gpus 0,1,2,3      # more workers
-#   ./scripts/run_benchmarks.sh --tag template-v2   # own W&B tag for this sweep
+#   ./scripts/run_benchmarks.sh --tag my-sweep      # own W&B tag for this sweep
 #
 set -uo pipefail
 # Overrides are deliberately word-split into argv, but they contain bracket
@@ -72,6 +72,8 @@ JOBS=(
   "ppo_atari100k_jamesbond|experiment=ppo/ale environment.task=Jamesbond|trainer.total_frames=256 trainer.num_envs=1 trainer.log_every_n_steps=64 algorithm.frames_per_batch=64 algorithm.mini_batch_size=32 algorithm.num_epochs=2 algorithm.anneal_frames=256"
 
   "bbf_atari100k_jamesbond|experiment=bbf/atari100k environment.task=Jamesbond|trainer.total_frames=40 trainer.log_every_n_steps=8 algorithm.min_replay_history=8 algorithm.batch_size=2 algorithm.replay_ratio=1 algorithm.replay_capacity=200 algorithm.max_update_horizon=3 algorithm.min_update_horizon=1 algorithm.spr_depth=2 algorithm.width_scale=1 algorithm.hidden_dim=64 algorithm.reset_interval=12 algorithm.eps_annealing_frames=8"
+
+  "rainbow_atari100k_jamesbond|experiment=rainbow/atari100k environment.task=Jamesbond|trainer.total_frames=40 trainer.log_every_n_steps=8 algorithm.init_random_frames=16 algorithm.batch_size=2 algorithm.replay_capacity=200 algorithm.hidden_dim=64 algorithm.hard_update_freq=4 algorithm.n_steps=3"
 
   "dreamer_atari100k_jamesbond|experiment=dreamer/atari100k environment.task=Jamesbond|trainer.total_frames=20 trainer.log_every_n_steps=10 algorithm.world_model_video_log_every=8 algorithm.agent_video_log_every=0 model.deter=64 model.hidden=64 model.discrete=8 model.depth=8 model.units=64 algorithm.buffer_config.batch_size=16 algorithm.buffer_config.batch_length=8 algorithm.buffer_config.max_size=500 algorithm.dreamer_config.compile=false algorithm.dreamer_config.imag_horizon=3"
 
