@@ -1,0 +1,33 @@
+# @package _global_
+#
+# Root config for the profiling study — where wall-clock of one baseline run goes.
+
+defaults:
+  - _self_
+  - paths: default
+  - hydra: default
+  - study: profiling
+  - optional local: default
+
+study_name: profiling
+results_name: profile
+
+seeds: [1]
+task: Jamesbond
+
+device_index: 0
+physical_device_index: 0
+rss_limit_gib: 128
+sync_cuda: true
+overhead_run: true
+
+quick: false
+quick_total_frames: 3000
+quick_overrides:
+  - evaluation.every_n_steps=1000
+  - evaluation.num_episodes=1
+  - evaluation.final_num_episodes=2
+
+cell_timeout_seconds: 172800
+runs_filter: null
+reaggregate_from: null

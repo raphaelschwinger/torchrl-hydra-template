@@ -1,0 +1,29 @@
+# @package _global_
+#
+# Per-algorithm baseline runs for the profiling study.
+
+study_name: profiling
+results_name: profile
+
+tags: ["profiling", "atari100k", "measured", "not-reproducible"]
+
+train_script: src/train.py
+
+runs:
+  bbf:
+    label: "BBF"
+    experiment: bbf/atari100k
+    total_frames: 100_000
+    overrides:
+      - trainer.num_envs=1
+
+  dreamerv3:
+    label: "DreamerV3"
+    experiment: dreamer/atari100k_notweaks
+    total_frames: 100_000
+    overrides: []
+
+common_overrides:
+  - logger=tensorboard
+  - checkpoint.enabled=false
+  - trainer.log_every_n_steps=1000
