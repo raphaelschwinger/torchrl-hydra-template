@@ -9,7 +9,7 @@ from torch import distributions as torchd
 from torch import nn
 
 import src.components.distributions as dists  #! R2Dreamer used bare `import distributions as dists`
-from src.algorithms.dreamer.networks import BlockLinear, LambdaLayer  #!
+from src.algorithms.dreamer.networks import BlockLinear, LambdaLayer, RMSNormF32  #!
 from src.algorithms.dreamer.tools import rpad, weight_init_  #!
 
 
@@ -22,17 +22,17 @@ class Deter(nn.Module):
         act = getattr(torch.nn, act)
         self._dyn_in0 = nn.Sequential(
             nn.Linear(deter, hidden, bias=True),
-            nn.RMSNorm(hidden, eps=1e-04, dtype=torch.bfloat16),
+            RMSNormF32(hidden, eps=1e-04),
             act(),
         )
         self._dyn_in1 = nn.Sequential(
             nn.Linear(stoch, hidden, bias=True),
-            nn.RMSNorm(hidden, eps=1e-04, dtype=torch.bfloat16),
+            RMSNormF32(hidden, eps=1e-04),
             act(),
         )
         self._dyn_in2 = nn.Sequential(
             nn.Linear(act_dim, hidden, bias=True),
-            nn.RMSNorm(hidden, eps=1e-04, dtype=torch.bfloat16),
+            RMSNormF32(hidden, eps=1e-04),
             act(),
         )
         self._dyn_hid = nn.Sequential()
@@ -41,9 +41,7 @@ class Deter(nn.Module):
             self._dyn_hid.add_module(
                 f"dyn_hid_{i}", BlockLinear(in_ch, deter, self.blocks)
             )
-            self._dyn_hid.add_module(
-                f"norm_{i}", nn.RMSNorm(deter, eps=1e-04, dtype=torch.bfloat16)
-            )
+            self._dyn_hid.add_module(f"norm_{i}", RMSNormF32(deter, eps=1e-04))
             self._dyn_hid.add_module(f"act_{i}", act())
             in_ch = deter
         self._dyn_gru = BlockLinear(in_ch, 3 * deter, self.blocks)
@@ -128,7 +126,7 @@ class RSSM(nn.Module):
             )
             self._obs_net.add_module(
                 f"obs_net_n_{i}",
-                nn.RMSNorm(self._hidden, eps=1e-04, dtype=torch.bfloat16),
+                RMSNormF32(self._hidden, eps=1e-04),
             )
             self._obs_net.add_module(f"obs_net_a_{i}", act())
             inp_dim = self._hidden
@@ -150,7 +148,7 @@ class RSSM(nn.Module):
             )
             self._img_net.add_module(
                 f"img_net_n_{i}",
-                nn.RMSNorm(self._hidden, eps=1e-04, dtype=torch.bfloat16),
+                RMSNormF32(self._hidden, eps=1e-04),
             )
             self._img_net.add_module(f"img_net_a_{i}", act())
             inp_dim = self._hidden

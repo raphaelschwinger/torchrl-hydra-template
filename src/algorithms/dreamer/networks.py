@@ -12,6 +12,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+import src.algorithms.dreamer.perf_flags as perf_flags
 import src.components.distributions as dists  #! R2Dreamer used bare `import distributions as dists`
 from src.algorithms.dreamer.tools import weight_init_  #!
 
@@ -67,13 +68,33 @@ class BlockLinear(nn.Module):
 
 
 class Conv2dSamePad(nn.Conv2d):
-    """A Conv2d layer that emulates TensorFlow's 'SAME' padding."""
+    """A Conv2d layer that emulates TensorFlow's 'SAME' padding.
+
+    For stride 1 with an odd kernel and no dilation (the only configuration
+    used in this codebase) SAME padding equals the constant symmetric
+    ``k // 2``, which is passed to cuDNN directly. The runtime ``F.pad``
+    fallback below materialises a padded copy of the activations on every
+    forward/backward, which is measurably slower.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._static_same = (
+            perf_flags.flags.static_pad
+            and all(s == 1 for s in self.stride)
+            and all(k % 2 == 1 for k in self.kernel_size)
+            and all(d == 1 for d in self.dilation)
+        )
+        if self._static_same:
+            self.padding = tuple(k // 2 for k in self.kernel_size)
 
     def _calc_same_pad(self, i: int, k: int, s: int, d: int) -> int:
         i_div_s_ceil = (i + s - 1) // s
         return max((i_div_s_ceil - 1) * s + (k - 1) * d + 1 - i, 0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self._static_same:
+            return super().forward(x)
         ih, iw = x.size()[-2:]
         pad_h = self._calc_same_pad(
             ih, self.kernel_size[0], self.stride[0], self.dilation[0]
@@ -99,7 +120,23 @@ class Conv2dSamePad(nn.Conv2d):
         )
 
 
-class RMSNorm2D(nn.RMSNorm):
+class RMSNormF32(nn.RMSNorm):
+    """RMSNorm computed in float32 and cast back to the input dtype.
+
+    Matches the official DreamerV3 ``Norm``, which upcasts to f32 for the
+    normalisation regardless of the bf16 autocast compute dtype. Keeping the
+    input and weight dtypes consistent also preserves the fused kernel path
+    (mixed bf16-input/f32-weight falls back to the slow unfused
+    implementation).
+    """
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return F.rms_norm(x.float(), self.normalized_shape, self.weight, self.eps).to(
+            x.dtype
+        )
+
+
+class RMSNorm2D(RMSNormF32):
     """RMSNorm over channel-last format applied to 4D tensors."""
 
     def __init__(self, ch: int, eps: float = 1e-3, dtype=None):
@@ -273,7 +310,7 @@ class ConvEncoder(nn.Module):
             )
             layers.append(nn.MaxPool2d(2, 2))
             if config.norm:
-                layers.append(RMSNorm2D(depth, eps=1e-04, dtype=torch.bfloat16))
+                layers.append(RMSNorm2D(depth, eps=1e-04))
             layers.append(act())
             in_dim = depth
             h, w = h // 2, w // 2
@@ -314,13 +351,11 @@ class ConvDecoder(nn.Module):
         self.sp0 = BlockLinear(deter, u, g)
         self.sp1 = nn.Sequential(
             nn.Linear(flat_stoch, 2 * self.units),
-            nn.RMSNorm(2 * self.units, eps=1e-04, dtype=torch.bfloat16),
+            RMSNormF32(2 * self.units, eps=1e-04),
             act(),
         )
         self.sp2 = nn.Linear(2 * self.units, math.prod(self.min_shape))
-        self.sp_norm = nn.Sequential(
-            nn.RMSNorm(self.depths[-1], eps=1e-04, dtype=torch.bfloat16), act()
-        )
+        self.sp_norm = nn.Sequential(RMSNormF32(self.depths[-1], eps=1e-04), act())
         layers = []
         in_dim = self.depths[-1]
         for depth in reversed(self.depths[:-1]):
@@ -328,7 +363,7 @@ class ConvDecoder(nn.Module):
             layers.append(
                 Conv2dSamePad(in_dim, depth, self.kernel_size, stride=1, bias=True)
             )
-            layers.append(RMSNorm2D(depth, eps=1e-04, dtype=torch.bfloat16))
+            layers.append(RMSNorm2D(depth, eps=1e-04))
             layers.append(act())
             in_dim = depth
         layers.append(nn.Upsample(scale_factor=2, mode="nearest"))
@@ -401,7 +436,7 @@ class MLP(nn.Module):
             )
             self.layers.add_module(
                 f"{config.name}_norm{i}",
-                nn.RMSNorm(config.units, eps=1e-04, dtype=torch.bfloat16),
+                RMSNormF32(config.units, eps=1e-04),
             )
             self.layers.add_module(f"{config.name}_act{i}", act())
             inp_dim = config.units
