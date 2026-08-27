@@ -1,0 +1,15 @@
+# @package _global_
+# DreamerV3 on Atari-100k with runtime tweaks disabled — profiling baseline.
+defaults:
+  - /experiment/dreamer/atari100k
+  - _self_
+
+algorithm:
+  dreamer_config:
+    compile: false
+    perf:
+      amp: "off"
+  buffer_config:
+    pin_memory: false
+  world_model_video_log_every: 0
+  agent_video_log_every: 0

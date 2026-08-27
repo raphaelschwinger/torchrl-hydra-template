@@ -550,9 +550,19 @@ src/
   trainers/
     base.py                 — BaseTrainer ABC, TrainerEvent, Callback protocol, fire_callbacks
     step_trainer.py         — StepTrainer (Collector-driven loop)
+    profiling.py            — ProfilingStepTrainer (optional phase timer; measurement only)
+  profiling/                — PhaseTimer, phase taxonomy, algorithm probes (torch-free except probes usage)
+  envbench/                 — environment-provider throughput harness (lazy provider imports)
   callbacks/                — ProgressCallback, CheckpointCallback, WandBLogger, TensorBoardLogger
-  utils/                    — device resolution, seeding, callback builders
+  utils/                    — device, seeding, measured sweep helpers (measured, rss, gpu, paths, environment)
+scripts/
+  measured_sweep.sh         — shared GPU/RSS launcher for wall-clock studies
+  profiling/                — profiling sweep task, export_csv, run_profiling.sh
+  envbench/                 — envthroughput sweep task, worker, export_csv, pufferlib_cell.py
 configs/
+  profiling.yaml, envbench.yaml — measured study roots
+  study/profiling.yaml, study/envthroughput.yaml — citable experiment descriptions
+  hydra/default.yaml        — run dirs under logs/<study>/runs/
   trainer/{default,cpu,gpu,eval}.yaml — the loop (seed, total_frames, num_envs, logging, accelerator)
   algorithm/dqn.yaml        — DQN HPs; _partial_ replay_buffer + `network` group
   algorithm/ddpg.yaml       — DDPG HPs; _partial_ actor/critic/noise
@@ -583,7 +593,7 @@ configs/
   experiment/ppo/{dmc,ale}.yaml — PPO DMC cheetah-run (1M) / Atari-100k JamesBond (100k)
   experiment/tdmpc2/dmc.yaml    — TD-MPC2 DMC cheetah-run
   experiment/rainbow/atari100k.yaml — Data-Efficient Rainbow on Atari-100k
-  experiment/dreamer/atari100k.yaml — DreamerV3 on Atari-100k (image obs)
+  experiment/dreamer/atari100k_notweaks.yaml — Dreamer baseline with runtime tweaks off (profiling)
   experiment/dreamer/dmc.yaml       — DreamerV3 on DMC cheetah-run, proprio (mlp_keys=observation)
   experiment/bbf/atari100k.yaml     — BBF on Atari-100k (RR2 default; num_envs=1)
   experiment/bbf/atari100k_rr8.yaml — BBF flagship RR8 variant (same 40k-grad-step reset cadence)
@@ -593,8 +603,9 @@ configs/
 tests/
   test_smoke.py             — smoke tests: DQN (CartPole, Pong), DDPG, A2C, PPO (DMC cheetah,
                               JamesBond), TD-MPC2, DER, BBF, DreamerV3
-  test_bbf_buffer.py        — BBF buffer/sampling unit tests (n-step masking, C51 projection,
-                              PrioritizedSliceSampler windows); no env, no ale_py
+  test_profiling.py         — phase timer, profiling study config/aggregation
+  test_envbench.py          — envbench registry, config, aggregation
+  test_bbf_buffer.py        — BBF buffer/sampling unit tests
 ```
 
 ## Documentation
@@ -675,6 +686,18 @@ python scripts/update_algo_results.py              # refresh algo README benchma
 ./scripts/make_figures.sh --group atari100k        # one comparison group
 ./scripts/make_figures.sh --tag template-v2 --full --publish   # regenerate docs/evaluation.md figures
 pytest tests/test_smoke.py -v
+
+# Wall-clock profiling: one run or full sweep
+python src/train.py experiment=bbf/atari100k \
+  trainer._target_=src.trainers.profiling.ProfilingStepTrainer \
+  +profiling.enabled=true +profiling.sync_cuda=true
+GPU=2 ./scripts/profiling/run_profiling.sh quick=true
+uv run python scripts/profiling/export_csv.py   # → logs/profiling/export/profile_breakdown.csv
+
+# Environment throughput (optional extras: envs, envsjax — never both with torch CUDA)
+uv sync --extra envs
+./scripts/envbench/run_envbench.sh quick=true
+uv run python scripts/envbench/export_csv.py
 
 # Evaluate an official TD-MPC2 checkpoint (see src/algorithms/tdmpc2/README.md):
 python src/eval.py algorithm=tdmpc2 environment=dmc \
