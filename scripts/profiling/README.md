@@ -8,8 +8,8 @@ the paper figure by re-running the sweep and exporting CSV:
 ```bash
 GPU=2 ./scripts/profiling/run_profiling.sh quick=true   # smoke (~2 min)
 GPU=2 ./scripts/profiling/run_profiling.sh                # full sweep (hours)
-uv run python scripts/profiling/export_csv.py             # → paper/data/figures/profile_breakdown.csv
-cd paper && make plots
+uv run python scripts/profiling/export_csv.py             # → logs/profiling/export/profile_breakdown.csv
+cd ../FastRL && make plots                                # separate paper repo
 ```
 
 Launch through `run_profiling.sh` (idle-GPU check, RSS ceiling, thread cap). Each

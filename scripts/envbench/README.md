@@ -8,8 +8,7 @@ Measures how fast each environment provider can be stepped (random actions, no l
 uv sync --extra envs                    # optional CPU providers (Linux x86_64)
 ./scripts/envbench/run_envbench.sh quick=true
 ./scripts/envbench/run_envbench.sh
-uv run python scripts/envbench/export_csv.py   # → paper/data/figures/env_throughput.csv
-cd paper && make plots
+uv run python scripts/envbench/export_csv.py   # → logs/envthroughput/export/env_throughput.csv
 ```
 
 Aggregated output: `logs/envthroughput/results/throughput.parquet` (gitignored).

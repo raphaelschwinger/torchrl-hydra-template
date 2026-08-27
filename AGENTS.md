@@ -559,7 +559,6 @@ scripts/
   measured_sweep.sh         — shared GPU/RSS launcher for wall-clock studies
   profiling/                — profiling sweep task, export_csv, run_profiling.sh
   envbench/                 — envthroughput sweep task, worker, export_csv, pufferlib_cell.py
-paper/                      — git submodule: FastRL paper (paperkit figures/tables, docs/paper-fastrl)
 configs/
   profiling.yaml, envbench.yaml — measured study roots
   study/profiling.yaml, study/envthroughput.yaml — citable experiment descriptions
@@ -688,16 +687,12 @@ python scripts/update_algo_results.py              # refresh algo README benchma
 ./scripts/make_figures.sh --tag template-v2 --full --publish   # regenerate docs/evaluation.md figures
 pytest tests/test_smoke.py -v
 
-# Paper submodule (FastRL.git under paper/)
-git submodule update --init paper
-cd paper && make all
-
 # Wall-clock profiling: one run or full sweep
 python src/train.py experiment=bbf/atari100k \
   trainer._target_=src.trainers.profiling.ProfilingStepTrainer \
   +profiling.enabled=true +profiling.sync_cuda=true
 GPU=2 ./scripts/profiling/run_profiling.sh quick=true
-uv run python scripts/profiling/export_csv.py   # refresh paper/data/figures/profile_breakdown.csv
+uv run python scripts/profiling/export_csv.py   # → logs/profiling/export/profile_breakdown.csv
 
 # Environment throughput (optional extras: envs, envsjax — never both with torch CUDA)
 uv sync --extra envs

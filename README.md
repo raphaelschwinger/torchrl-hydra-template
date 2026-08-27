@@ -157,17 +157,11 @@ contract, and benchmark results.
 
 ![DMC cheetah-run return](docs/figures/dmc.png)
 
-## Paper submodule
+## Measured studies (profiling & envbench)
 
-The FastRL paper lives in [`paper/`](paper/) (git submodule → `FastRL.git`).
-Build figures and the PDF from committed CSV caches:
+Wall-clock studies live in this template; the [FastRL paper](https://github.com/raphaelschwinger/FastRL) is a **separate repository** (clone it alongside this one if you need figures/PDF).
 
-```shell
-git submodule update --init paper
-cd paper && make all          # plots, tables, paper, check
-```
-
-Measured study numbers are exported from template sweeps into `paper/data/`:
+Export sweep results to CSV under `logs/`:
 
 ```shell
 GPU=2 ./scripts/profiling/run_profiling.sh
@@ -176,6 +170,8 @@ uv run python scripts/profiling/export_csv.py
 ./scripts/envbench/run_envbench.sh
 uv run python scripts/envbench/export_csv.py
 ```
+
+Copy exported CSVs into the paper repo's `data/figures/` when refreshing figures.
 
 ## Wall-clock profiling
 
