@@ -135,7 +135,7 @@ DMC cheetah-run — at three seeds each.
 ./scripts/run_sweep.sh --gpus 2,3          # the real sweep
 ./scripts/run_sweep.sh --only bbf,tdmpc2   # subset by job name
 ./scripts/run_sweep.sh --tag template-v2   # own W&B tag for this sweep
-./scripts/run_sweep.sh --sweep scripts/sweeps/dreamer_speedup.yaml
+./scripts/run_sweep.sh --sweep scripts/sweeps/dreamer_optimisations_ablation.yaml
 ```
 
 For a sweep whose result is a *runtime*, use the serial runner instead — it
@@ -144,7 +144,7 @@ records `wall_seconds` per cell alongside the GPU and host state at that cell's
 start:
 
 ```shell
-GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/dreamer_speedup.yaml
+GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/dreamer_optimisations_ablation.yaml
 ```
 
 Use `--tag` whenever the evaluation protocol has changed since the last sweep.

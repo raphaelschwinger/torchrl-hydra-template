@@ -10,7 +10,7 @@
 # cards. Both read the same scripts/sweeps/*.yaml through scripts/jobs.py,
 # so a job is defined once and can be run either way.
 #
-#   GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/dreamer_speedup.yaml
+#   GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/dreamer_optimisations_ablation.yaml
 #   GPU=2 ./scripts/run_measured_sweep.sh --only tf32 --seeds 1
 #   GPU=2 ./scripts/run_measured_sweep.sh --dry-run
 #
@@ -28,7 +28,7 @@
 #   --seeds LIST    comma-separated seeds, overriding the sweep files
 #   --tag NAME      W&B tag for this sweep            (default: measured)
 #   --online        log to W&B live instead of offline (see below)
-#   --no-sync       keep the offline runs local; do not upload at the end
+#   --no-sync       keep the offline runs local; never upload
 #   --dry-run       print the commands and exit
 #
 # Environment:
@@ -99,7 +99,7 @@ gpu_state() {  # -> "<mib> <util>", or "nan nan" without nvidia-smi
 
 # --- refuse to measure wall-clock on a contended card -------------------------
 read -r used util < <(gpu_state)
-if [[ "$used" != "nan" ]]; then
+if [[ "$used" != "nan" ]] && ((DRY_RUN == 0)); then
   if [[ "${FORCE:-0}" != "1" ]] && { [[ "$used" -gt 1024 ]] || [[ "$util" -gt 5 ]]; }; then
     echo "GPU $GPU is busy: ${used} MiB used, ${util}% utilisation." >&2
     echo "A wall-clock measurement on a shared card is not a measurement." >&2
@@ -125,10 +125,10 @@ fi
 # Offline by default: `wandb.log` hands off to a separate process rather than
 # blocking, so the cost is small, but Dreamer's video logging is not — and a
 # sweep whose point is the timing should not have to argue about it. The runs
-# still reach W&B: they are synced at the end of the sweep, which uploads them
-# with their original timestamps, so nothing is lost by staying offline while
-# the clock is running. `--online` opts back in when you want live curves more
-# than you want a clean number; `--no-sync` keeps them local.
+# still reach W&B: each is synced as soon as its own cell's clock stops, with
+# its original timestamps, so a day-long sweep publishes as it goes instead of
+# holding everything to the last row. `--online` opts back in when you want live
+# curves more than you want a clean number; `--no-sync` keeps them local.
 if ((ONLINE)); then
   MODE_ARGS=""
 else
@@ -147,6 +147,26 @@ SWEEP_ARGS=()
 for f in "${SWEEPS[@]}"; do SWEEP_ARGS+=(--sweep "$f"); done
 "$PYTHON" scripts/jobs.py "${SWEEP_ARGS[@]}" \
   ${ONLY:+--only "$ONLY"} ${SEEDS:+--seeds "$SEEDS"} > "$JOBS_TSV" || exit 1
+
+# Upload whatever offline runs sit under $1. Called after each cell so a sweep
+# that runs for a day puts its results on W&B as it goes rather than holding
+# them hostage to the last row, and once more at the end to catch stragglers.
+# `wandb sync` on an already-uploaded directory is a no-op, which is what makes
+# both the repeat call and a resumed sweep safe.
+sync_runs() {  # dir
+  ((ONLINE == 0 && NO_SYNC == 0)) || return 0
+  local wandb_bin=".venv/bin/wandb"
+  [[ -x "$wandb_bin" ]] || wandb_bin="$(command -v wandb 2>/dev/null)"
+  [[ -n "$wandb_bin" ]] || return 0
+  set +f
+  local runs=("$1"/wandb/offline-run-*)
+  set -f
+  [[ -e "${runs[0]}" ]] || return 0
+  local run
+  for run in "${runs[@]}"; do
+    "$wandb_bin" sync "$run" >/dev/null 2>&1 || echo "  sync failed: $run" >&2
+  done
+}
 
 build_cmd() {  # name seed overrides
   local name=$1 seed=$2 overrides=$3
@@ -173,7 +193,7 @@ fi
 gpu_name="$(nvidia-smi --id="$GPU" --query-gpu=name --format=csv,noheader 2>/dev/null || echo unknown)"
 echo "sweep: $(wc -l < "$JOBS_TSV") cells on GPU $GPU ($gpu_name), ${THREADS} threads, tag=$RUN_TAG"
 echo "GPU $GPU: ${used} MiB used, ${util}% utilisation"
-((ONLINE == 0)) && echo "W&B: offline — uploaded automatically when the sweep finishes"
+((ONLINE == 0)) && echo "W&B: offline — each run uploaded as its cell finishes"
 
 if [[ ! -s "$TIMINGS" ]]; then
   printf 'name\tseed\twall_seconds\tstatus\tgpu_mem_start_mib\tgpu_util_start_pct\tloadavg_start\tphysical_gpu\tgpu_name\n' > "$TIMINGS"
@@ -223,6 +243,10 @@ while IFS=$'\t' read -r name seed overrides; do
     printf '%-6s %s  %s s  -> %s\n' "FAILED" "$cell" "$wall" "$log"
     tail -n 15 "$log" | sed 's/^/  | /'
   fi
+
+  # After this cell's clock has stopped and before the next one starts, so the
+  # upload is never inside a measurement.
+  sync_runs "$MEASURED_DIR/runs/${cell}"
 done < "$JOBS_TSV"
 
 # ----------------------------------------------------------------- summary
@@ -231,31 +255,20 @@ echo "=== summary (elapsed $(( ($(date +%s) - started) / 60 ))m) ==="
 echo "  $ok/$total complete"
 echo "  timings: $TIMINGS"
 
-# --- upload the offline runs --------------------------------------------------
-# After the clock has stopped, so the upload cannot land in any cell's timing.
-# Each run directory is synced separately: `wandb sync` on a directory that has
-# already been uploaded is a no-op, which is what makes this safe to rerun after
-# a resumed sweep.
+# --- catch any run the per-cell sync missed -----------------------------------
 if ((ONLINE == 0 && NO_SYNC == 0)); then
-  echo
-  if ! command -v wandb >/dev/null 2>&1 && [[ ! -x .venv/bin/wandb ]]; then
+  if [[ ! -x .venv/bin/wandb ]] && ! command -v wandb >/dev/null 2>&1; then
     echo "  wandb CLI not found — sync manually with:"
     echo "    wandb sync $MEASURED_DIR/runs/*/wandb/offline-run-*"
   else
-    WANDB=".venv/bin/wandb"
-    [[ -x "$WANDB" ]] || WANDB="wandb"
-    # `set -f` is on, so expand the glob explicitly rather than relying on it.
     set +f
-    offline_runs=("$MEASURED_DIR"/runs/*/wandb/offline-run-*)
+    for run_dir in "$MEASURED_DIR"/runs/*/; do
+      set -f
+      sync_runs "${run_dir%/}"
+      set +f
+    done
     set -f
-    if [[ ! -e "${offline_runs[0]}" ]]; then
-      echo "  no offline runs to sync under $MEASURED_DIR/runs/"
-    else
-      echo "  syncing ${#offline_runs[@]} run(s) to W&B..."
-      for run in "${offline_runs[@]}"; do
-        "$WANDB" sync "$run" || echo "  sync failed: $run" >&2
-      done
-    fi
+    echo "  W&B: synced (per cell, and again just now for stragglers)"
   fi
 fi
 [[ $ok -eq $total ]] || exit 1

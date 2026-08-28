@@ -1,0 +1,315 @@
+# Per-tweak optimisation ablation for DreamerV3 on the Atari-100k validation
+# task: each runtime tweak enabled individually on top of a stock baseline.
+#
+#   GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/dreamer_optimisations_ablation.yaml
+#   GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/dreamer_optimisations_ablation.yaml --only baseline,compile
+#
+# MEASURED SWEEP: the result is wall-clock, so it is not reproducible off this
+# machine. Run it with run_measured_sweep.sh, never run_sweep.sh — a parallel
+# neighbour on another card still shares this host's CPU and PCIe.
+#
+# BASELINE IS EVERYTHING OFF. DreamerV3 ships with all of these ON, so the
+# baseline row switches them off and each row switches exactly one back on.
+# So a tweak that earns its keep shows up as a NEGATIVE delta.
+#
+# `axis` is the optimisation axis the row belongs to. `semantics_preserving:
+# false` marks a row that changes what the learner computes, so its score is a
+# claim about learning rather than a guardrail, and it may not be carried into
+# `combined`.
+#
+# TWO COMMON RUNTIME TWEAKS HAVE NO ROW HERE, omitted rather than faked:
+#   channels_last  no such path in the Dreamer stack — `algorithm.channels_last`
+#                  does not exist, would need `+`, and nothing reads it. The
+#                  conv encoder/decoder would benefit; it needs implementing
+#                  before it can be measured.
+#   prioritised    the buffer has no prioritised sampling to switch off: the
+#   replay         world model trains on sequence segments, so there is no
+#                  per-transition TD error to prioritise by. `buffer_config.
+#                  online` is the nearest knob and a different claim, so it is
+#                  a row of its own below.
+
+common:
+  # One seed by default, because most rows here are pure-runtime: they measure
+  # wall-clock, where a second seed buys run-to-run variance rather than a
+  # result. Rows whose claim is about SCORE override this with `seeds: [1, 2, 3]`
+  # — every `semantics_preserving: false` row, plus `baseline` and `combined`,
+  # which those rows are compared against.
+  seeds: [1]
+  total_frames: 100_000
+  overrides:
+    - environment.task=Jamesbond
+    # No `logger=tensorboard` here: run_measured_sweep.sh already runs W&B
+    # offline and uploads each run once its cell's clock has stopped, so no
+    # network call happens on the training thread while the clock runs.
+    - checkpoint.enabled=false
+    - trainer.log_every_n_steps=1000
+    # Already the experiment default; restated so the launched command is
+    # self-describing in the cell log.
+    - trainer.num_envs=1
+    # Dreamer-specific, and load-bearing for a timing sweep: the world-model
+    # tile and the agent rollout (up to 400 extra env steps) both run inside the
+    # timed region at the committed 50k cadence, and a row that changes
+    # throughput hits that boundary at a different point relative to the run's
+    # end. Off for every cell.
+    - algorithm.world_model_video_log_every=0
+    - algorithm.agent_video_log_every=0
+
+runs:
+  baseline:
+    label: "Baseline (all runtime tweaks off)"
+    axis: ""
+    semantics_preserving: true
+    # The reference every other row is quoted against, so it needs the seeds
+    # of the most demanding of them.
+    seeds: [1, 2, 3]
+    # NOT r2dreamer parity, and deliberately so. r2dreamer sets
+    # float32_matmul_precision unconditionally, so `tf32: false` here is one
+    # notch BELOW upstream — which is what makes `tf32` measurable as a row.
+    # `amp: fp16` is r2dreamer's scheme (fp16 autocast + GradScaler); quote
+    # "off" if you ever want full f32, since bare `off` is a YAML boolean.
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+
+  # ----------------------------------------------------------------- network
+  compile:
+    label: "torch.compile"
+    axis: network
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=true
+      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+
+  amp:
+    label: "Mixed precision (bf16)"
+    axis: network
+    seeds: [1, 2, 3]
+    # bf16 vs the baseline's fp16 changes the numerics, not just the speed.
+    semantics_preserving: false
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=bf16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+
+  static_pad:
+    label: "Static conv padding"
+    axis: network
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.static_pad=true
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+
+  cudnn_benchmark:
+    label: "cuDNN benchmark"
+    axis: network
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=true
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+
+  tf32:
+    label: "TF32 matmuls"
+    axis: network
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=true
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+
+  # --------------------------------------------------------------- optimiser
+  dedup_value:
+    label: "Deduplicated value forward"
+    axis: network
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=true
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+
+  foreach_laprop:
+    label: "Batched LaProp step"
+    axis: network
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=true
+      - algorithm.buffer_config.pin_memory=false
+
+  # -------------------------------------------------------------------- data
+  pin_memory:
+    label: "Pinned staging + async H2D"
+    axis: data
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=true
+
+  gpu_replay:
+    label: "GPU-resident replay"
+    axis: data
+    semantics_preserving: true
+    # `storage_device: cpu` is already the committed default, so unlike the
+    # rows above this one does not appear in the baseline's override list.
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+      - algorithm.buffer_config.storage_device=cuda
+
+  no_online:
+    label: "No online sampling"
+    axis: data
+    seeds: [1, 2, 3]
+    # The buffer's only sampling knob: it changes which segments the learner
+    # sees, not how fast it sees them.
+    semantics_preserving: false
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+      - algorithm.buffer_config.online=false
+
+  batch32:
+    label: "Replay batch 32"
+    axis: network
+    seeds: [1, 2, 3]
+    # The replay batch is not a pure runtime knob: it changes the gradient and
+    # would need the learning rate rescaled to stay comparable. Measured, not
+    # recommended.
+    semantics_preserving: false
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+      - algorithm.buffer_config.batch_size=32
+
+  batch8:
+    label: "Replay batch 8"
+    axis: network
+    seeds: [1, 2, 3]
+    semantics_preserving: false
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+      - algorithm.buffer_config.batch_size=8
+
+  train_ratio512:
+    label: "Train ratio 512"
+    axis: data
+    seeds: [1, 2, 3]
+    semantics_preserving: false
+    # DECLARED BUT NOT RUN. `train_ratio` is replayed frames per env step, so
+    # 512 is 4x the committed 128 and roughly 4x the baseline's runtime — half
+    # the sweep again, for a row whose cost is not in doubt. Recorded here
+    # rather than left to prose, so the file says what was skipped. To run it:
+    # `--only baseline,train_ratio512`, which overrides the flag.
+    enabled: false
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+      - algorithm.train_ratio=512
+
+  combined:
+    label: "Combined (committed defaults)"
+    axis: ""
+    semantics_preserving: true
+    # The headline claim of the sweep, so it carries the score seeds too.
+    seeds: [1, 2, 3]
+    # Every tweak at once — which is exactly the committed configuration, so
+    # this row carries no overrides at all. Fill it in from the stage-1 table
+    # instead if you want the stricter rule — only semantics-preserving rows
+    # that beat the baseline by more than run-to-run variation — in which case
+    # `amp` and the two batch rows are ineligible.
+    experiment: dreamer/atari100k
+    overrides: []

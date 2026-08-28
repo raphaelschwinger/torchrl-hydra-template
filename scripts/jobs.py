@@ -7,7 +7,7 @@ cannot read YAML -- so the table lives in `scripts/sweeps/*.yaml` and both
 shell out to this.
 
     scripts/jobs.py --sweep scripts/sweeps/benchmarks.yaml
-    scripts/jobs.py --sweep benchmarks.yaml --sweep dreamer_speedup.yaml
+    scripts/jobs.py --sweep benchmarks.yaml --sweep dreamer_optimisations_ablation.yaml
     scripts/jobs.py --sweep benchmarks.yaml --only dreamer,bbf --smoke
 
 Output is `name<TAB>seed<TAB>overrides`, which is what both callers already
@@ -80,11 +80,17 @@ def load_sweeps(paths: list[Path]) -> dict[str, dict]:
             if "experiment" not in job:
                 raise SystemExit(f"{where}: no `experiment:` key")
             seeds = job.get("seeds", common_seeds) or DEFAULT_SEEDS
+            total_frames = job.get("total_frames", common.get("total_frames"))
             jobs[name] = {
                 "sweep": path,
                 "experiment": str(job["experiment"]),
                 "seeds": [int(s) for s in seeds],
                 "enabled": bool(job.get("enabled", True)),
+                # Promoted out of `overrides` because a row's budget is part of
+                # what makes it comparable to the baseline, not an incidental
+                # tweak. Emitted before the overrides so a row can still shrink
+                # it with an explicit `trainer.total_frames=` if it must.
+                "total_frames": None if total_frames is None else int(total_frames),
                 "overrides": common_overrides
                 + _as_list(job.get("overrides"), "overrides", where),
                 "smoke_overrides": common_smoke
@@ -145,7 +151,10 @@ def main() -> None:
 
     for name in names:
         job = jobs[name]
-        overrides = [f"experiment={job['experiment']}"] + job["overrides"]
+        overrides = [f"experiment={job['experiment']}"]
+        if job["total_frames"] is not None:
+            overrides.append(f"trainer.total_frames={job['total_frames']}")
+        overrides += job["overrides"]
         if args.smoke:
             overrides += job["smoke_overrides"]
         for seed in cli_seeds or job["seeds"]:
