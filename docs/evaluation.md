@@ -111,18 +111,40 @@ before it shows up in the curve.
 
 `scripts/make_figures.sh` wraps this for the committed comparison groups.
 
-### Multi-GPU benchmark sweeps
+### Sweeps
 
-`scripts/run_benchmarks.sh` runs a fixed cross-algorithm sweep — PPO, BBF and
-DreamerV3 on Atari-100k Jamesbond, plus PPO, TD-MPC2 and DreamerV3 on DMC
-cheetah-run — at three seeds each, load-balanced across GPUs.
+A **sweep** is a set of runs launched together from one definition — N jobs ×
+M seeds. Each file in `scripts/sweeps/` is one sweep, read by `scripts/jobs.py`.
+Jobs carry no evaluation settings: each takes the protocol committed with its
+experiment.
+
+There are two runners, that read the sweep config files:
+
+| | |
+|---|---|
+| `scripts/run_sweep.sh` | Queue-balanced across GPUs. For getting runs finished. |
+| `scripts/run_measured_sweep.sh` | Serial, one pinned idle GPU, thread-capped. For wall-clock, which parallelism destroys. |
+
+`scripts/sweeps/benchmarks.yaml` is the committed cross-algorithm sweep — PPO,
+BBF and DreamerV3 on Atari-100k Jamesbond, plus PPO, TD-MPC2 and DreamerV3 on
+DMC cheetah-run — at three seeds each.
 
 ```shell
-./scripts/run_benchmarks.sh --dry-run           # print the 18 commands
-./scripts/run_benchmarks.sh --smoke             # tiny budgets; validates every spec
-./scripts/run_benchmarks.sh --gpus 2,3          # the real sweep
-./scripts/run_benchmarks.sh --only bbf,tdmpc2   # subset by job name
-./scripts/run_benchmarks.sh --tag template-v2   # own W&B tag for this sweep
+./scripts/run_sweep.sh --dry-run           # print the 18 commands
+./scripts/run_sweep.sh --smoke             # tiny budgets; validates every spec
+./scripts/run_sweep.sh --gpus 2,3          # the real sweep
+./scripts/run_sweep.sh --only bbf,tdmpc2   # subset by job name
+./scripts/run_sweep.sh --tag template-v2   # own W&B tag for this sweep
+./scripts/run_sweep.sh --sweep scripts/sweeps/dreamer_speedup.yaml
+```
+
+For a sweep whose result is a *runtime*, use the serial runner instead — it
+pins one card, refuses to start if that card is busy, caps OMP/MKL threads, and
+records `wall_seconds` per cell alongside the GPU and host state at that cell's
+start:
+
+```shell
+GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/dreamer_speedup.yaml
 ```
 
 Use `--tag` whenever the evaluation protocol has changed since the last sweep.
@@ -134,13 +156,14 @@ only what belongs together.
 Workers pull from a shared queue instead of taking a fixed slice, because the
 jobs differ in cost by more than an order of magnitude — a static split would
 leave a GPU idle for hours. Each finished run drops a marker in
-`logs/benchmarks/done/`, so the sweep is interruptible and resumable. Runs are
+`logs/sweeps/done/`, so the sweep is interruptible and resumable. Runs are
 tagged `template` for `scripts/update_algo_results.py`.
 
-The job table carries **no** protocol overrides: every experiment's committed
-`evaluation` config already reports the same thing as the others in its
-comparison group. Anything a job needs beyond that belongs in its experiment
-file, not in the table.
+Jobs carry **no** protocol overrides. Each experiment commits its own
+`evaluation` config, so every run in a comparison group is measured the same
+way. Overriding cadence or episode count per job would define the protocol in
+two places — and `rlops` cannot tell two protocols apart, so the figure would
+silently compare unlike runs.
 
 ### Figures
 
@@ -182,7 +205,7 @@ sweep's runs together (see [Multi-GPU benchmark sweeps](#multi-gpu-benchmark-swe
 
 ## Benchmark results
 
-Three seeds per algorithm, produced by `./scripts/run_benchmarks.sh --gpus 2,3
+Three seeds per algorithm, produced by `./scripts/run_sweep.sh --gpus 2,3
 --tag template-v2` and plotted with `./scripts/make_figures.sh --tag
 template-v2 --full --publish`. Shaded bands are ±1 std over seeds; every
 number is the mean of the last 100 logged evaluation episodes.
