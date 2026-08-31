@@ -62,15 +62,10 @@ runs:
     # The reference every other row is quoted against, so it needs the seeds
     # of the most demanding of them.
     seeds: [1, 2, 3]
-    # NOT r2dreamer parity, and deliberately so. r2dreamer sets
-    # float32_matmul_precision unconditionally, so `tf32: false` here is one
-    # notch BELOW upstream — which is what makes `tf32` measurable as a row.
-    # `amp: fp16` is r2dreamer's scheme (fp16 autocast + GradScaler); quote
-    # "off" if you ever want full f32, since bare `off` is a YAML boolean.
     experiment: dreamer/atari100k
     overrides:
       - algorithm.dreamer_config.compile=false
-      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
       - algorithm.dreamer_config.perf.dedup_value=false
       - algorithm.dreamer_config.perf.cudnn_benchmark=false
@@ -86,6 +81,23 @@ runs:
     experiment: dreamer/atari100k
     overrides:
       - algorithm.dreamer_config.compile=true
+      - algorithm.dreamer_config.perf.amp=off
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+
+  amp_fp16:
+    label: "Mixed precision (fp16 + GradScaler)"
+    axis: network
+    seeds: [1, 2, 3]
+    # r2dreamer's scheme: fp16's 5-bit exponent underflows, so the scaling is required.
+    semantics_preserving: false
+    experiment: dreamer/atari100k
+    overrides:
+      - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=fp16
       - algorithm.dreamer_config.perf.static_pad=false
       - algorithm.dreamer_config.perf.dedup_value=false
@@ -94,11 +106,11 @@ runs:
       - algorithm.dreamer_config.perf.foreach_laprop=false
       - algorithm.buffer_config.pin_memory=false
 
-  amp:
+  amp_bf16:
     label: "Mixed precision (bf16)"
     axis: network
     seeds: [1, 2, 3]
-    # bf16 vs the baseline's fp16 changes the numerics, not just the speed.
+    # Official DreamerV3's scheme: bf16 autocast, no gradient scaling.
     semantics_preserving: false
     experiment: dreamer/atari100k
     overrides:
@@ -118,7 +130,7 @@ runs:
     experiment: dreamer/atari100k
     overrides:
       - algorithm.dreamer_config.compile=false
-      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=true
       - algorithm.dreamer_config.perf.dedup_value=false
       - algorithm.dreamer_config.perf.cudnn_benchmark=false
@@ -133,7 +145,7 @@ runs:
     experiment: dreamer/atari100k
     overrides:
       - algorithm.dreamer_config.compile=false
-      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
       - algorithm.dreamer_config.perf.dedup_value=false
       - algorithm.dreamer_config.perf.cudnn_benchmark=true
@@ -148,7 +160,7 @@ runs:
     experiment: dreamer/atari100k
     overrides:
       - algorithm.dreamer_config.compile=false
-      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
       - algorithm.dreamer_config.perf.dedup_value=false
       - algorithm.dreamer_config.perf.cudnn_benchmark=false
@@ -164,7 +176,7 @@ runs:
     experiment: dreamer/atari100k
     overrides:
       - algorithm.dreamer_config.compile=false
-      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
       - algorithm.dreamer_config.perf.dedup_value=true
       - algorithm.dreamer_config.perf.cudnn_benchmark=false
@@ -179,7 +191,7 @@ runs:
     experiment: dreamer/atari100k
     overrides:
       - algorithm.dreamer_config.compile=false
-      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
       - algorithm.dreamer_config.perf.dedup_value=false
       - algorithm.dreamer_config.perf.cudnn_benchmark=false
@@ -195,7 +207,7 @@ runs:
     experiment: dreamer/atari100k
     overrides:
       - algorithm.dreamer_config.compile=false
-      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
       - algorithm.dreamer_config.perf.dedup_value=false
       - algorithm.dreamer_config.perf.cudnn_benchmark=false
@@ -212,7 +224,7 @@ runs:
     experiment: dreamer/atari100k
     overrides:
       - algorithm.dreamer_config.compile=false
-      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
       - algorithm.dreamer_config.perf.dedup_value=false
       - algorithm.dreamer_config.perf.cudnn_benchmark=false
@@ -231,14 +243,14 @@ runs:
     experiment: dreamer/atari100k
     overrides:
       - algorithm.dreamer_config.compile=false
-      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
       - algorithm.dreamer_config.perf.dedup_value=false
       - algorithm.dreamer_config.perf.cudnn_benchmark=false
       - algorithm.dreamer_config.perf.tf32=false
       - algorithm.dreamer_config.perf.foreach_laprop=false
       - algorithm.buffer_config.pin_memory=false
-      - algorithm.buffer_config.online=false
+      - algorithm.buffer_config.online=false # Added
 
   batch32:
     label: "Replay batch 32"
@@ -251,7 +263,7 @@ runs:
     experiment: dreamer/atari100k
     overrides:
       - algorithm.dreamer_config.compile=false
-      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
       - algorithm.dreamer_config.perf.dedup_value=false
       - algorithm.dreamer_config.perf.cudnn_benchmark=false
@@ -268,7 +280,7 @@ runs:
     experiment: dreamer/atari100k
     overrides:
       - algorithm.dreamer_config.compile=false
-      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
       - algorithm.dreamer_config.perf.dedup_value=false
       - algorithm.dreamer_config.perf.cudnn_benchmark=false
@@ -291,7 +303,7 @@ runs:
     experiment: dreamer/atari100k
     overrides:
       - algorithm.dreamer_config.compile=false
-      - algorithm.dreamer_config.perf.amp=fp16
+      - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
       - algorithm.dreamer_config.perf.dedup_value=false
       - algorithm.dreamer_config.perf.cudnn_benchmark=false

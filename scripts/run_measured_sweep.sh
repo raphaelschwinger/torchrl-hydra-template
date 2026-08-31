@@ -114,7 +114,10 @@ fi
 # on a loaded box measures the neighbours: `nproc`-ish load means every cell is
 # competing for the CPU that feeds the GPU.
 load_now="$(cut -d' ' -f1 /proc/loadavg)"
-cpus="$(nproc 2>/dev/null || echo 0)"
+# `--all` because plain `nproc` honours OMP_NUM_THREADS, which this script has
+# already exported — without it the load is compared against the thread cap
+# rather than the machine, and a quiet 384-core box warns at every start.
+cpus="$(nproc --all 2>/dev/null || echo 0)"
 if [[ "$cpus" -gt 0 ]] && (( ${load_now%.*} > cpus )); then
   echo "WARNING: load average ${load_now} on ${cpus} CPUs — the host is busy." >&2
   echo "         Timings will include other people's work. loadavg_start is" >&2
