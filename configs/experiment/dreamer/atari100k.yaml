@@ -49,6 +49,8 @@ environment:
 
 algorithm:
   action_repeat: 4        # AtariPreprocessing(frame_skip=4) above
+  buffer_config:
+    max_size: ${trainer.total_frames} # Limit buffer size if max frames is smaller than it
 
 # This stack sets `terminal_on_life_loss: false` with no reward clipping, so the
 # *training* stream is already true game scores — but BBF and Rainbow report

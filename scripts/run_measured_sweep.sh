@@ -171,6 +171,11 @@ sync_runs() {  # dir
   done
 }
 
+# `logger.0.save_dir` is pinned to the cell directory alongside the two hydra
+# path overrides. Without it the logger falls back to `${paths.log_dir}/wandb/`,
+# which is derived from the project root rather than from `paths.output_dir` —
+# so every cell's offline run lands in one shared logs/wandb/ and `sync_runs`,
+# which globs inside the cell directory, matches nothing and returns quietly.
 build_cmd() {  # name seed overrides
   local name=$1 seed=$2 overrides=$3
   echo "python src/train.py $overrides" \
@@ -180,7 +185,8 @@ build_cmd() {  # name seed overrides
        "logger.0.tags=[$RUN_TAG]" \
        $MODE_ARGS \
        "hydra.run.dir=$MEASURED_DIR/runs/${name}-seed${seed}" \
-       "paths.output_dir=$MEASURED_DIR/runs/${name}-seed${seed}"
+       "paths.output_dir=$MEASURED_DIR/runs/${name}-seed${seed}" \
+       "logger.0.save_dir=$MEASURED_DIR/runs/${name}-seed${seed}"
 }
 
 if ((DRY_RUN)); then
@@ -206,7 +212,12 @@ trap 'echo; echo "interrupted"; exit 130' INT TERM
 
 started=$(date +%s)
 total=0; ok=0
-while IFS=$'\t' read -r name seed overrides; do
+
+# Snapshot the job list before the first cell start
+mapfile -t JOB_LINES < "$JOBS_TSV"
+
+for job_line in "${JOB_LINES[@]}"; do
+  IFS=$'\t' read -r name seed overrides <<< "$job_line"
   total=$((total + 1))
   cell="${name}-seed${seed}"
   if [[ -f "$MEASURED_DIR/done/${cell}.done" ]]; then
@@ -250,7 +261,7 @@ while IFS=$'\t' read -r name seed overrides; do
   # After this cell's clock has stopped and before the next one starts, so the
   # upload is never inside a measurement.
   sync_runs "$MEASURED_DIR/runs/${cell}"
-done < "$JOBS_TSV"
+done
 
 # ----------------------------------------------------------------- summary
 echo
