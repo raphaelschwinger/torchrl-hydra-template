@@ -19,7 +19,7 @@
 #   ./scripts/run_sweep.sh                     # the real sweep on GPUs 2,3
 #   ./scripts/run_sweep.sh --only bbf,tdmpc2   # subset by job name
 #   ./scripts/run_sweep.sh --gpus 0,1,2,3      # more workers
-#   ./scripts/run_sweep.sh --tag template-v2   # own W&B tag for this sweep
+#   ./scripts/run_sweep.sh --tag template-v2   # extra W&B tag for this run
 #   ./scripts/run_sweep.sh --sweep a.yaml --sweep b.yaml
 #
 set -uo pipefail
@@ -59,14 +59,8 @@ done
 [[ ${#SWEEPS[@]} -eq 0 ]] && SWEEPS=("scripts/sweeps/benchmarks.yaml")
 
 if [[ $SMOKE -eq 1 ]]; then
-  RUN_TAG="${TAG:-smoke}"
   EXTRA_ARGS="logger.0.mode=offline"
 else
-  # `--tag` exists because W&B tags are the only thing separating one sweep from
-  # the next: runs from an older evaluation protocol stay `finished` and keep
-  # their tag forever, and rlops cannot tell two protocols apart. Give a sweep
-  # its own tag and `scripts/make_figures.sh --tag <name>` compares only it.
-  RUN_TAG="${TAG:-template}"
   EXTRA_ARGS=""
 fi
 
@@ -90,6 +84,25 @@ for f in "${SWEEPS[@]}"; do SWEEP_ARGS+=(--sweep "$f"); done
   ${ONLY:+--only "$ONLY"} ${SEEDS:+--seeds "$SEEDS"} \
   $( ((SMOKE)) && echo --smoke ) > "$JOBS_TSV" || exit 1
 
+# Tags accumulate: `parallel` says which runner produced the run, the sweep's
+# `common.tag` says which sweep it belongs to, `--tag` is this invocation's own.
+# Smoke cells take neither the sweep's tag nor `--tag`'s place in a selector:
+# they get `smoke` instead, so a stray one can never reach a results table.
+add_tag() {
+  local t=$1
+  [[ -z "$t" ]] && return 0
+  case ",$RUN_TAGS," in *",$t,"*) return 0 ;; esac
+  RUN_TAGS="${RUN_TAGS:+$RUN_TAGS,}$t"
+}
+RUN_TAGS=""
+add_tag "parallel"
+if ((SMOKE)); then
+  add_tag "smoke"
+else
+  add_tag "$("$PYTHON" scripts/jobs.py "${SWEEP_ARGS[@]}" --print-tag)"
+fi
+add_tag "$TAG"
+
 queued=0
 skipped=0
 while IFS=$'\t' read -r name seed overrides; do
@@ -110,7 +123,7 @@ build_cmd() {  # name seed overrides gpu
   echo "python src/train.py $overrides" \
        "trainer.seed=$seed" \
        "trainer.devices=[0]" \
-       "logger.0.tags=[$RUN_TAG]" \
+       "logger.0.tags=[$RUN_TAGS]" \
        $EXTRA_ARGS \
        "hydra.run.dir=$SWEEP_DIR/runs/${name}-seed${seed}" \
        "paths.output_dir=$SWEEP_DIR/runs/${name}-seed${seed}"

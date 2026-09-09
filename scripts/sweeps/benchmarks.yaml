@@ -8,11 +8,12 @@
 # experiment plus the overrides that make it this job; seeds are the runner's.
 
 common:
+  tag: template
   seeds: [1, 2, 3]
   # Applied to every job under --smoke, before each job's own smoke overrides.
-  # Keeps a validation pass to seconds. Smoke runs also carry a `smoke` tag
-  # rather than `template` (the runner sets it), so a stray online run can
-  # never reach scripts/update_algo_results.py.
+  # Keeps a validation pass to seconds. Smoke runs carry `smoke` instead of this
+  # sweep's tag (the runner swaps it), so a stray online run can never reach
+  # scripts/update_algo_results.py.
   smoke_overrides:
     - evaluation.every_n_steps=0
     - evaluation.final_num_episodes=2

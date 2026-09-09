@@ -26,7 +26,8 @@
 #   --sweep FILE    one sweep YAML from scripts/sweeps/; repeat to combine
 #   --only SUBSTR   comma-separated substrings of job names
 #   --seeds LIST    comma-separated seeds, overriding the sweep files
-#   --tag NAME      W&B tag for this sweep            (default: measured)
+#   --tag NAME      extra W&B tag; added alongside "measured" and the
+#                   sweep file's own `common.tag`
 #   --online        log to W&B live instead of offline (see below)
 #   --no-sync       keep the offline runs local; never upload
 #   --dry-run       print the commands and exit
@@ -74,7 +75,6 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ ${#SWEEPS[@]} -eq 0 ]] && SWEEPS=("scripts/sweeps/benchmarks.yaml")
-RUN_TAG="${TAG:-measured}"
 
 # --- one card, and only one ---------------------------------------------------
 # CUDA_VISIBLE_DEVICES rather than `trainer.devices=[N]` alone: with a single
@@ -151,6 +151,18 @@ for f in "${SWEEPS[@]}"; do SWEEP_ARGS+=(--sweep "$f"); done
 "$PYTHON" scripts/jobs.py "${SWEEP_ARGS[@]}" \
   ${ONLY:+--only "$ONLY"} ${SEEDS:+--seeds "$SEEDS"} > "$JOBS_TSV" || exit 1
 
+# Tags accumulate: the runner's own, the sweep's `common.tag`, and `--tag`.
+add_tag() {
+  local t=$1
+  [[ -z "$t" ]] && return 0
+  case ",$RUN_TAGS," in *",$t,"*) return 0 ;; esac
+  RUN_TAGS="${RUN_TAGS:+$RUN_TAGS,}$t"
+}
+RUN_TAGS=""
+add_tag "measured"
+add_tag "$("$PYTHON" scripts/jobs.py "${SWEEP_ARGS[@]}" --print-tag)"
+add_tag "$TAG"
+
 # Upload whatever offline runs sit under $1. Called after each cell so a sweep
 # that runs for a day puts its results on W&B as it goes rather than holding
 # them hostage to the last row, and once more at the end to catch stragglers.
@@ -182,7 +194,7 @@ build_cmd() {  # name seed overrides
        "trainer.seed=$seed" \
        "trainer.accelerator=gpu" \
        "trainer.devices=[0]" \
-       "logger.0.tags=[$RUN_TAG]" \
+       "logger.0.tags=[$RUN_TAGS]" \
        $MODE_ARGS \
        "hydra.run.dir=$MEASURED_DIR/runs/${name}-seed${seed}" \
        "paths.output_dir=$MEASURED_DIR/runs/${name}-seed${seed}" \
@@ -190,7 +202,7 @@ build_cmd() {  # name seed overrides
 }
 
 if ((DRY_RUN)); then
-  echo "GPU $GPU: ${used} MiB used, ${util}% utilisation | ${THREADS} threads | tag=$RUN_TAG"
+  echo "GPU $GPU: ${used} MiB used, ${util}% utilisation | ${THREADS} threads | tags=$RUN_TAGS"
   while IFS=$'\t' read -r name seed overrides; do
     echo
     echo "# [$name seed=$seed]"
@@ -200,7 +212,7 @@ if ((DRY_RUN)); then
 fi
 
 gpu_name="$(nvidia-smi --id="$GPU" --query-gpu=name --format=csv,noheader 2>/dev/null || echo unknown)"
-echo "sweep: $(wc -l < "$JOBS_TSV") cells on GPU $GPU ($gpu_name), ${THREADS} threads, tag=$RUN_TAG"
+echo "sweep: $(wc -l < "$JOBS_TSV") cells on GPU $GPU ($gpu_name), ${THREADS} threads, tags=$RUN_TAGS"
 echo "GPU $GPU: ${used} MiB used, ${util}% utilisation"
 ((ONLINE == 0)) && echo "W&B: offline — each run uploaded as its cell finishes"
 

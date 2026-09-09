@@ -99,6 +99,24 @@ def load_sweeps(paths: list[Path]) -> dict[str, dict]:
     return jobs
 
 
+def sweep_tag(paths: list[Path]) -> str:
+    """The W&B tag a sweep declares in `common.tag`, or "" if none does.
+
+    A sweep's tag is what ties its runs back to it in W&B afterwards; without
+    one, two sweeps launched through the same runner share that runner's
+    default tag and cannot be told apart. Declared here rather than in
+    `common.overrides` because both runners append `logger.0.tags=` after the
+    sweep's own overrides, and Hydra takes the last value for a key.
+    """
+    for path in paths:
+        with open(path) as fh:
+            spec = yaml.safe_load(fh) or {}
+        tag = (spec.get("common") or {}).get("tag")
+        if tag:
+            return str(tag)
+    return ""
+
+
 def selected(jobs: dict[str, dict], only: str) -> list[str]:
     """Job names to run, in sweep-file order.
 
@@ -134,7 +152,19 @@ def main() -> None:
     parser.add_argument(
         "--list", action="store_true", help="print job names only, one per line"
     )
+    parser.add_argument(
+        "--print-tag",
+        action="store_true",
+        help="print the sweep's `common.tag` (empty if none) and exit",
+    )
     args = parser.parse_args()
+
+    if args.print_tag:
+        # Both runners resolve their W&B tag through here, so a sweep declares
+        # its tag once and gets it whichever way it is launched. First file that
+        # declares one wins, since `--sweep` may name several.
+        print(sweep_tag(args.sweep))
+        return
 
     jobs = load_sweeps(args.sweep)
     names = selected(jobs, args.only)

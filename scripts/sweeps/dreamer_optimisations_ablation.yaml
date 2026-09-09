@@ -29,6 +29,10 @@
 #                  a row of its own below.
 
 common:
+  # W&B tag for every cell of this sweep, so a run is traceable back to the
+  # sweep that produced it rather than to "some measured run with these knobs".
+  # `run_measured_sweep.sh --tag NAME` overrides it.
+  tag: dreamer-opt
   # One seed by default, because most rows here are pure-runtime: they measure
   # wall-clock, where a second seed buys run-to-run variance rather than a
   # result. Rows whose claim is about SCORE override this with `seeds: [1, 2, 3]`
