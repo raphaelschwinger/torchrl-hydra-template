@@ -50,7 +50,7 @@ while [[ $# -gt 0 ]]; do
     --tag)      TAG="$2"; shift 2 ;;
     --sweep)    SWEEPS+=("$2"); shift 2 ;;
     --dry-run)  DRY_RUN=1; shift ;;
-    --smoke)    SMOKE=1; SWEEP_DIR="${SWEEP_DIR}/smoke"; shift ;;
+    --smoke)    SMOKE=1; shift ;;
     -h|--help)  sed -n '2,25p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
@@ -65,21 +65,28 @@ else
 fi
 
 # ------------------------------------------------------------------- queue
-mkdir -p "$SWEEP_DIR"/{done,logs,runs}
-QUEUE="$SWEEP_DIR/queue.txt"
-JOBS_TSV="$SWEEP_DIR/jobs.tsv"
-: > "$QUEUE"
-
 IFS=',' read -ra GPU_LIST <<< "$GPUS"
 
 PYTHON=".venv/bin/python"
 [[ -x "$PYTHON" ]] || PYTHON="python3"
 
+SWEEP_ARGS=()
+for f in "${SWEEPS[@]}"; do SWEEP_ARGS+=(--sweep "$f"); done
+SWEEP_TAG="$("$PYTHON" scripts/jobs.py "${SWEEP_ARGS[@]}" --print-tag)"
+
+# One directory per sweep, named by its tag: cells are keyed `<row>-seed<N>`,
+# and two sweeps both declaring a `baseline` row would otherwise write the same
+# directory and skip each other's cells as already done.
+SWEEP_DIR="${SWEEP_DIR}${SWEEP_TAG:+/$SWEEP_TAG}"
+((SMOKE)) && SWEEP_DIR="$SWEEP_DIR/smoke"
+mkdir -p "$SWEEP_DIR"/{done,logs,runs}
+QUEUE="$SWEEP_DIR/queue.txt"
+JOBS_TSV="$SWEEP_DIR/jobs.tsv"
+: > "$QUEUE"
+
 # The full expansion, before the done/ filter -- written once and used for both
 # the queue and the end-of-run summary, so the two can never disagree about
 # which runs this sweep was supposed to cover.
-SWEEP_ARGS=()
-for f in "${SWEEPS[@]}"; do SWEEP_ARGS+=(--sweep "$f"); done
 "$PYTHON" scripts/jobs.py "${SWEEP_ARGS[@]}" \
   ${ONLY:+--only "$ONLY"} ${SEEDS:+--seeds "$SEEDS"} \
   $( ((SMOKE)) && echo --smoke ) > "$JOBS_TSV" || exit 1
@@ -99,7 +106,7 @@ add_tag "parallel"
 if ((SMOKE)); then
   add_tag "smoke"
 else
-  add_tag "$("$PYTHON" scripts/jobs.py "${SWEEP_ARGS[@]}" --print-tag)"
+  add_tag "$SWEEP_TAG"
 fi
 add_tag "$TAG"
 

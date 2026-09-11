@@ -36,7 +36,8 @@
 #   GPU        physical GPU index to pin to           (default 0)
 #   THREADS    OMP/MKL thread cap                     (default 32, see below)
 #   FORCE=1    run even if the GPU is not idle
-#   MEASURED_DIR   output directory                     (default logs/measured)
+#   MEASURED_DIR   output directory                     (default logs/measured;
+#                  the sweep's tag is appended as a subdirectory)
 #
 set -uo pipefail
 # Overrides are word-split into argv and contain bracket syntax
@@ -139,15 +140,21 @@ else
 fi
 
 # ------------------------------------------------------------------- job list
-mkdir -p "$MEASURED_DIR"/{done,logs,runs}
-JOBS_TSV="$MEASURED_DIR/jobs.tsv"
-TIMINGS="$MEASURED_DIR/timings.tsv"
-
 PYTHON=".venv/bin/python"
 [[ -x "$PYTHON" ]] || PYTHON="python3"
 
 SWEEP_ARGS=()
 for f in "${SWEEPS[@]}"; do SWEEP_ARGS+=(--sweep "$f"); done
+SWEEP_TAG="$("$PYTHON" scripts/jobs.py "${SWEEP_ARGS[@]}" --print-tag)"
+
+# One directory per sweep, named by its tag: cells are keyed `<row>-seed<N>`,
+# and two sweeps both declaring a `baseline` row would otherwise write the same
+# directory and skip each other's cells as already done.
+MEASURED_DIR="${MEASURED_DIR}${SWEEP_TAG:+/$SWEEP_TAG}"
+mkdir -p "$MEASURED_DIR"/{done,logs,runs}
+JOBS_TSV="$MEASURED_DIR/jobs.tsv"
+TIMINGS="$MEASURED_DIR/timings.tsv"
+
 "$PYTHON" scripts/jobs.py "${SWEEP_ARGS[@]}" \
   ${ONLY:+--only "$ONLY"} ${SEEDS:+--seeds "$SEEDS"} > "$JOBS_TSV" || exit 1
 
@@ -160,7 +167,7 @@ add_tag() {
 }
 RUN_TAGS=""
 add_tag "measured"
-add_tag "$("$PYTHON" scripts/jobs.py "${SWEEP_ARGS[@]}" --print-tag)"
+add_tag "$SWEEP_TAG"
 add_tag "$TAG"
 
 # Upload whatever offline runs sit under $1. Called after each cell so a sweep
@@ -217,7 +224,7 @@ echo "GPU $GPU: ${used} MiB used, ${util}% utilisation"
 ((ONLINE == 0)) && echo "W&B: offline — each run uploaded as its cell finishes"
 
 if [[ ! -s "$TIMINGS" ]]; then
-  printf 'name\tseed\twall_seconds\tstatus\tgpu_mem_start_mib\tgpu_util_start_pct\tloadavg_start\tphysical_gpu\tgpu_name\n' > "$TIMINGS"
+  printf 'sweep\tname\tseed\twall_seconds\tstatus\tgpu_mem_start_mib\tgpu_util_start_pct\tloadavg_start\tphysical_gpu\tgpu_name\n' > "$TIMINGS"
 fi
 
 trap 'echo; echo "interrupted"; exit 130' INT TERM
@@ -259,8 +266,8 @@ for job_line in "${JOB_LINES[@]}"; do
   wall_ms=$(( ($(date +%s%N) - start_ns) / 1000000 ))
   wall="$(( wall_ms / 1000 )).$(( (wall_ms % 1000) / 100 ))"
 
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$name" "$seed" "$wall" "$status" "$mem_start" "$util_start" \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "${SWEEP_TAG:--}" "$name" "$seed" "$wall" "$status" "$mem_start" "$util_start" \
     "$load_start" "$GPU" "$gpu_name" >> "$TIMINGS"
 
   if [[ "$status" == "ok" ]]; then

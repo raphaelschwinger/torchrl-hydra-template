@@ -11,22 +11,6 @@
 # BASELINE IS EVERYTHING OFF. DreamerV3 ships with all of these ON, so the
 # baseline row switches them off and each row switches exactly one back on.
 # So a tweak that earns its keep shows up as a NEGATIVE delta.
-#
-# `axis` is the optimisation axis the row belongs to. `semantics_preserving:
-# false` marks a row that changes what the learner computes, so its score is a
-# claim about learning rather than a guardrail, and it may not be carried into
-# `combined`.
-#
-# TWO COMMON RUNTIME TWEAKS HAVE NO ROW HERE, omitted rather than faked:
-#   channels_last  no such path in the Dreamer stack — `algorithm.channels_last`
-#                  does not exist, would need `+`, and nothing reads it. The
-#                  conv encoder/decoder would benefit; it needs implementing
-#                  before it can be measured.
-#   prioritised    the buffer has no prioritised sampling to switch off: the
-#   replay         world model trains on sequence segments, so there is no
-#                  per-transition TD error to prioritise by. `buffer_config.
-#                  online` is the nearest knob and a different claim, so it is
-#                  a row of its own below.
 
 common:
   # W&B tag for every cell of this sweep, so a run is traceable back to the
@@ -42,19 +26,9 @@ common:
   total_frames: 100_000
   overrides:
     - environment.task=Jamesbond
-    # No `logger=tensorboard` here: run_measured_sweep.sh already runs W&B
-    # offline and uploads each run once its cell's clock has stopped, so no
-    # network call happens on the training thread while the clock runs.
     - checkpoint.enabled=false
     - trainer.log_every_n_steps=1000
-    # Already the experiment default; restated so the launched command is
-    # self-describing in the cell log.
     - trainer.num_envs=1
-    # Dreamer-specific, and load-bearing for a timing sweep: the world-model
-    # tile and the agent rollout (up to 400 extra env steps) both run inside the
-    # timed region at the committed 50k cadence, and a row that changes
-    # throughput hits that boundary at a different point relative to the run's
-    # end. Off for every cell.
     - algorithm.world_model_video_log_every=0
     - algorithm.agent_video_log_every=0
 
@@ -68,6 +42,7 @@ runs:
     seeds: [1, 2, 3]
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_baseline
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
@@ -84,6 +59,7 @@ runs:
     semantics_preserving: true
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_compile
       - algorithm.dreamer_config.compile=true
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
@@ -101,6 +77,7 @@ runs:
     semantics_preserving: false
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_amp_fp16
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=fp16
       - algorithm.dreamer_config.perf.static_pad=false
@@ -118,6 +95,7 @@ runs:
     semantics_preserving: false
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_amp_bf16
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=bf16
       - algorithm.dreamer_config.perf.static_pad=false
@@ -133,6 +111,7 @@ runs:
     semantics_preserving: true
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_static_pad
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=true
@@ -148,6 +127,7 @@ runs:
     semantics_preserving: true
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_cudnn_benchmark
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
@@ -163,6 +143,7 @@ runs:
     semantics_preserving: true
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_tf32
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
@@ -179,6 +160,7 @@ runs:
     semantics_preserving: true
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_dedup_value
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
@@ -194,6 +176,7 @@ runs:
     semantics_preserving: true
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_foreach_laprop
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
@@ -210,6 +193,7 @@ runs:
     semantics_preserving: true
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_pin_memory
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
@@ -227,6 +211,7 @@ runs:
     # rows above this one does not appear in the baseline's override list.
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_gpu_replay
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
@@ -246,6 +231,7 @@ runs:
     semantics_preserving: false
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_no_online
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
@@ -266,6 +252,7 @@ runs:
     semantics_preserving: false
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_batch32
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
@@ -283,6 +270,7 @@ runs:
     semantics_preserving: false
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_batch8
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
@@ -306,6 +294,7 @@ runs:
     enabled: false
     experiment: dreamer/atari100k
     overrides:
+      - exp_name=dreamer_ablation_train_ratio512
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
@@ -328,4 +317,5 @@ runs:
     # that beat the baseline by more than run-to-run variation — in which case
     # `amp` and the two batch rows are ineligible.
     experiment: dreamer/atari100k
-    overrides: []
+    overrides:
+      - exp_name=dreamer_ablation_combined
