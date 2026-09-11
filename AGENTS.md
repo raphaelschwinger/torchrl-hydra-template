@@ -660,11 +660,21 @@ python src/train.py experiment=tdmpc2/dmc environment.task=walker-walk
 
 python scripts/update_algo_results.py              # refresh algo README benchmark tables (W&B tag: template)
 
-# Cross-algorithm sweep: 6 experiments x 3 seeds, queue-balanced over GPUs.
-# Resumable (markers in logs/benchmarks/done/); tags runs `template`.
-./scripts/run_benchmarks.sh --dry-run              # print the 18 commands
-./scripts/run_benchmarks.sh --smoke                # tiny budgets; validates every spec
-./scripts/run_benchmarks.sh --gpus 2,3             # the real sweep
+# Sweeps are declared in scripts/sweeps/*.yaml (one file = one sweep) and
+# expanded by scripts/jobs.py. `--sweep` repeats to combine several files.
+#
+# run_sweep.sh: queue-balanced over GPUs, for getting runs *finished*.
+# Resumable (markers in logs/sweeps/done/); tags runs `template`.
+./scripts/run_sweep.sh --dry-run              # print the 18 commands
+./scripts/run_sweep.sh --smoke                # tiny budgets; validates every spec
+./scripts/run_sweep.sh --gpus 2,3             # the real sweep
+./scripts/run_sweep.sh --sweep scripts/sweeps/dreamer_optimisations_ablation.yaml
+
+# run_measured_sweep.sh: the same sweep files, run SERIALLY on one pinned idle
+# GPU, because wall-clock measured against a parallel neighbour is not a
+# measurement. Timings land in logs/measured/timings.tsv; runs log to W&B
+# offline and are uploaded when the sweep finishes.
+GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/dreamer_optimisations_ablation.yaml
 
 # Comparison figures + rliable, via openrlbenchmark's own rlops CLI.
 # First run builds an isolated .venv-openrlbenchmark; output in logs/analysis/.

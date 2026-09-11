@@ -1,0 +1,149 @@
+# Per-tweak optimisation ablation for BBF on the Atari-100k validation task:
+# each tweak enabled individually on top of a stock baseline.
+#
+#   GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/bbf_optimisations_ablation.yaml
+#   GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/bbf_optimisations_ablation.yaml --only baseline,uniform
+#
+# MEASURED SWEEP: the result is wall-clock, so it is not reproducible off this
+# machine. Run it with run_measured_sweep.sh, never run_sweep.sh.
+
+common:
+  tag: bbf-opt
+  # One seed for pure-runtime rows; rows whose claim is about SCORE override
+  # this with [1, 2, 3], as does the baseline they are quoted against.
+  seeds: [1]
+  total_frames: 100_000
+  overrides:
+    - environment.task=Jamesbond
+    - checkpoint.enabled=false
+    - trainer.log_every_n_steps=1000
+    # Already the experiment default; restated so the launched command is
+    # self-describing in the cell log.
+    - trainer.num_envs=1
+
+# Every row sets its own `exp_name`, because openrlbenchmark groups runs by
+# (exp_name, env_id): left at the default `bbf`, all eleven rows would merge
+# into one curve in any rlops figure. Same reason
+# configs/experiment/bbf/atari100k_rr8.yaml sets `exp_name: bbf_rr8`.
+runs:
+  baseline:
+    label: "Baseline (published BBF, RR2)"
+    axis: ""
+    semantics_preserving: true
+    seeds: [1, 2, 3]
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_baseline
+
+  # ----------------------------------------------------------------- network
+  compile:
+    label: "torch.compile"
+    axis: network
+    semantics_preserving: true
+    enabled: false # needs `algorithm.compile`
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_compile
+      - algorithm.compile=true
+
+  amp:
+    label: "Mixed precision (bf16)"
+    axis: network
+    semantics_preserving: true
+    enabled: false # needs `algorithm.amp`
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_amp
+      - algorithm.amp=true
+
+  channels_last:
+    label: "Channels-last"
+    axis: network
+    semantics_preserving: true
+    enabled: false # needs `algorithm.channels_last`
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_channels_last
+      - algorithm.channels_last=true
+
+  batch64:
+    label: "Optimisation batch 64"
+    axis: network
+    seeds: [1, 2, 3]
+    # The optimisation batch is not a pure runtime knob: it changes the gradient
+    # and would need the learning rate rescaled to stay comparable. Measured,
+    # not recommended.
+    semantics_preserving: false
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_batch64
+      - algorithm.batch_size=64
+
+  batch16:
+    label: "Optimisation batch 16"
+    axis: network
+    seeds: [1, 2, 3]
+    semantics_preserving: false
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_batch16
+      - algorithm.batch_size=16
+
+  # -------------------------------------------------------------------- data
+  pin_memory:
+    label: "Pinned staging + async H2D"
+    axis: data
+    semantics_preserving: true
+    enabled: false # needs `algorithm.pin_memory`
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_pin_memory
+      - algorithm.pin_memory=true
+
+  gpu_replay:
+    label: "GPU-resident replay"
+    axis: data
+    semantics_preserving: true
+    enabled: false # needs `algorithm.storage_device`
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_gpu_replay
+      - algorithm.storage_device=cuda
+
+  uniform:
+    label: "Uniform replay (no PER)"
+    axis: data
+    seeds: [1, 2, 3]
+    # Changes which transitions the learner sees.
+    semantics_preserving: false
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_uniform
+      - algorithm.prioritized=false
+
+  rr8:
+    label: "Replay ratio 8"
+    axis: data
+    seeds: [1, 2, 3]
+    semantics_preserving: false
+    # DECLARED BUT NOT RUN. At ~4x the baseline this single row is ~12 h, close
+    # to half the sweep, for a dagger row whose runtime cost is not in doubt.
+    # To run it: `--only baseline,rr8`, which overrides the flag. Note this
+    # changes replay_ratio alone; configs/experiment/bbf/atari100k_rr8.yaml is
+    # the paper's flagship variant and moves reset_interval with it.
+    enabled: false
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_rr8
+      - algorithm.replay_ratio=8
+
+  combined:
+    label: "Combined"
+    axis: ""
+    semantics_preserving: true
+    seeds: [1, 2, 3]
+    # Fill the overrides in from the measured table
+    enabled: false
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_combined
