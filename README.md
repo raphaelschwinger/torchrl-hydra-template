@@ -157,6 +157,50 @@ contract, and benchmark results.
 
 ![DMC cheetah-run return](docs/figures/dmc.png)
 
+## Measured studies (profiling & envbench)
+
+Wall-clock studies live in this template; the [FastRL paper](https://github.com/raphaelschwinger/FastRL) is a **separate repository** (clone it alongside this one if you need figures/PDF).
+
+Export sweep results to CSV under `logs/`:
+
+```shell
+GPU=2 ./scripts/profiling/run_profiling.sh
+uv run python scripts/profiling/export_csv.py
+
+./scripts/envbench/run_envbench.sh
+uv run python scripts/envbench/export_csv.py
+```
+
+Copy exported CSVs into the paper repo's `data/figures/` when refreshing figures.
+
+## Wall-clock profiling
+
+Optional phase timer for one training run (`src/profiling/`, `ProfilingStepTrainer`):
+
+```shell
+python src/train.py experiment=bbf/atari100k \
+  trainer._target_=src.trainers.profiling.ProfilingStepTrainer \
+  +profiling.enabled=true +profiling.sync_cuda=true
+```
+
+DreamerV3 profiling baseline (compile/amp/pin_memory/video off):
+`experiment=dreamer/atari100k_notweaks`. See [`scripts/profiling/README.md`](scripts/profiling/README.md).
+
+`sync_cuda` serialises CPU/GPU overlap on purpose — use paired enabled/disabled runs
+(`overhead_run` in the sweep config) to quantify measurement cost.
+
+## Environment throughput (`envbench`)
+
+Compare environment providers at random-action stepping speed:
+
+```shell
+uv sync --extra envs                 # optional CPU providers (Linux x86_64)
+./scripts/envbench/run_envbench.sh quick=true
+```
+
+See [`scripts/envbench/README.md`](scripts/envbench/README.md). JAX/MJX uses `--extra envsjax`
+in a separate venv (never combined with torch CUDA in one environment).
+
 ## Documentation
 
 | Doc | Covers |

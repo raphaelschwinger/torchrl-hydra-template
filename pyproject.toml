@@ -32,6 +32,23 @@ dependencies = [
     "pandas>=2.0.0",
 ]
 
+[project.optional-dependencies]
+envs = [
+    "shimmy[dm-control]>=2.0",
+    "stable-baselines3>=2.9",
+    "envpool>=1.2.5; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version >= '3.11'",
+]
+envsjax = [
+    "jax[cuda12]>=0.7; sys_platform == 'linux'",
+    "jax>=0.7; sys_platform != 'linux'",
+    "mujoco>=3.2",
+    "mujoco-mjx>=3.11",
+    "playground>=0.2",
+]
+studies = [
+    "pyarrow>=14.0.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

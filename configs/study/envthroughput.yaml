@@ -1,0 +1,153 @@
+# @package _global_
+#
+# Measured throughput of environment providers for Atari and DMC.
+
+study_name: envthroughput
+results_name: throughput
+
+tags: ["throughput", "environments", "measured", "not-reproducible"]
+
+num_envs: [1, 16, 64, 128, 256]
+
+suites:
+  atari:
+    task: Pong
+    action_repeat: 4
+    obs_contract: atari-std
+    sim_seconds_per_agent_step: 0.0
+  dmc:
+    task: cheetah_run
+    action_repeat: 2
+    obs_contract: dmc-state
+    sim_seconds_per_agent_step: 0.02
+
+providers:
+  gym_sync:
+    suite: atari
+    kind: gym_vector
+    label: "Gymnasium SyncVectorEnv"
+    substrate: "single-process Python loop"
+    parallelism: none
+    device: cpu
+    options: {asynchronous: false}
+
+  gym_async:
+    suite: atari
+    kind: gym_vector
+    label: "Gymnasium AsyncVectorEnv"
+    substrate: "subprocess workers, shared memory"
+    parallelism: process
+    device: cpu
+    options: {asynchronous: true}
+
+  ale_native:
+    suite: atari
+    kind: ale_native
+    label: "ALE AtariVectorEnv"
+    substrate: "C++ thread pool, native batching"
+    parallelism: thread
+    device: cpu
+
+  envpool_atari:
+    suite: atari
+    kind: envpool_atari
+    label: "EnvPool"
+    substrate: "C++ thread pool, async engine"
+    parallelism: thread
+    device: cpu
+
+  sb3_dummy:
+    suite: atari
+    kind: sb3_vector
+    label: "SB3 DummyVecEnv"
+    substrate: "single-process Python loop"
+    parallelism: none
+    device: cpu
+    options: {subproc: false}
+
+  sb3_subproc:
+    suite: atari
+    kind: sb3_vector
+    label: "SB3 SubprocVecEnv"
+    substrate: "subprocess workers, pipes"
+    parallelism: process
+    device: cpu
+    options: {subproc: true}
+
+  pufferlib:
+    suite: atari
+    kind: pufferlib
+    label: "PufferLib"
+    substrate: "unified wrappers, native vectorisation"
+    parallelism: process
+    device: cpu
+    obs_contract: atari-puffer-105x80
+    command:
+      - uv
+      - run
+      - --isolated
+      - --no-project
+      - --python
+      - "3.11"
+      - --with
+      - "pufferlib==3.0.0"
+      - --with
+      - "numpy<2"
+      - --with
+      - "ale-py==0.9.0"
+      - python
+      - scripts/envbench/pufferlib_cell.py
+    options: {multiprocessing: true}
+    env:
+      PATH: "/usr/local/bin:/usr/bin:/bin"
+      CUDA_HOME: ""
+      CUDA_PATH: ""
+
+  dmc_native:
+    suite: dmc
+    kind: dmc_native
+    label: "dm_control (serial)"
+    substrate: "single-threaded CPU MuJoCo"
+    parallelism: none
+    device: cpu
+
+  shimmy_sync:
+    suite: dmc
+    kind: gym_shimmy
+    label: "Gymnasium + Shimmy (sync)"
+    substrate: "single-process Python loop"
+    parallelism: none
+    device: cpu
+    options: {asynchronous: false}
+
+  shimmy_async:
+    suite: dmc
+    kind: gym_shimmy
+    label: "Gymnasium + Shimmy (async)"
+    substrate: "subprocess workers, shared memory"
+    parallelism: process
+    device: cpu
+    options: {asynchronous: true}
+
+  envpool_dmc:
+    suite: dmc
+    kind: envpool_dmc
+    label: "EnvPool DMC"
+    substrate: "C++ thread pool, async engine"
+    parallelism: thread
+    device: cpu
+
+  mjx_playground:
+    suite: dmc
+    kind: mjx_playground
+    label: "MJX / MuJoCo Playground"
+    substrate: "JAX/XLA, GPU-resident batch"
+    parallelism: gpu-batched
+    device: cuda
+    num_envs: [64, 256, 1024, 4096, 8192]
+    python_executable: .venv-jax/bin/python
+    env:
+      CUDA_VISIBLE_DEVICES: "1"
+      XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+      XLA_PYTHON_CLIENT_MEM_FRACTION: "0.5"
+      MUJOCO_GL: "disabled"

@@ -3,6 +3,9 @@ logs/
 outputs/
 eval.log
 
+# Local clone of the separate FastRL paper repo (not part of this template)
+paper/
+
 # Downloaded model checkpoints (e.g. official TD-MPC2 weights)
 checkpoints/
 
