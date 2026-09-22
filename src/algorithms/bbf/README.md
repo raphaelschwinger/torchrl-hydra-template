@@ -208,10 +208,13 @@ computed -- all default to off, so the published configuration is unaffected):
 
 ```shell
 python src/train.py experiment=bbf/atari100k algorithm.compile=true
+python src/train.py experiment=bbf/atari100k algorithm.compile=max-autotune   # or any mode string
 python src/train.py experiment=bbf/atari100k algorithm.amp=true               # bf16 autocast
 python src/train.py experiment=bbf/atari100k algorithm.channels_last=true     # NHWC convs
 python src/train.py experiment=bbf/atari100k algorithm.pin_memory=true        # pinned + async H2D
 python src/train.py experiment=bbf/atari100k algorithm.storage_device=cuda    # replay on the GPU
+python src/train.py experiment=bbf/atari100k algorithm.cudnn_benchmark=true   # cuDNN conv algorithm search
+python src/train.py experiment=bbf/atari100k algorithm.tf32=true              # TF32 matmuls
 ```
 
 `compile` wraps the *network* entry points (`encode`, `project`, `predict`,
@@ -219,7 +222,9 @@ python src/train.py experiment=bbf/atari100k algorithm.storage_device=cuda    # 
 `_update` reads the annealed discount and horizon on every gradient step, and
 Dynamo guards on both, so compiling the outer function recompiles continuously.
 The collector's policy is left eager: batch size 1 against the target network
-has nothing to fuse.
+has nothing to fuse. `true` means torch.compile's `default` mode; a string is
+passed through as the mode (`max-autotune`, ...), so its one-off search cost
+lands in the wall-clock of whichever run compiles with a cold inductor cache.
 
 `storage_device=cuda` is mutually exclusive with `pin_memory` (there is no host
 staging buffer to page-lock) and the constructor rejects the combination. At the

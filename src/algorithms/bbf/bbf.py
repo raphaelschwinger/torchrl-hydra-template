@@ -135,11 +135,16 @@ class BBFAlgorithm(BaseAlgorithm):
         # All off by default: BBF's published configuration enables none of
         # them, so the defaults here *are* the paper's configuration and no
         # existing run changes. Each is a knob for measurement.
-        compile: bool = False,  # torch.compile the learner's network calls
+        # False = eager; True = torch.compile's "default" mode; or a mode string
+        # ("max-autotune", ...), passed straight through. Same spelling as
+        # Dreamer's `dreamer_config.compile`.
+        compile: bool | str = False,  # torch.compile the learner's network calls
         amp: bool = False,  # autocast(bfloat16) on the gradient step
         channels_last: bool = False,  # NHWC activations for the conv stack
         pin_memory: bool = False,  # pinned host staging + async H2D of a sample
         storage_device: str = "cpu",  # replay storage device; "cuda" keeps it resident
+        cudnn_benchmark: bool = False,  # cuDNN times conv algorithms once per shape
+        tf32: bool = False,  # TF32 for float32 matmuls (convs already default to it)
     ) -> None:
         super().__init__(device)
         self.obs_key = obs_key
@@ -188,6 +193,8 @@ class BBFAlgorithm(BaseAlgorithm):
         self.channels_last = channels_last
         self.pin_memory = pin_memory
         self.storage_device = storage_device
+        self.cudnn_benchmark = cudnn_benchmark
+        self.tf32 = tf32
 
         if pin_memory and storage_device != "cpu":
             # Pinning is a property of *host* memory; there is no page-locked
@@ -213,6 +220,16 @@ class BBFAlgorithm(BaseAlgorithm):
     # ------------------------------------------------------------------
 
     def setup(self, make_env: Callable[[], EnvBase]) -> None:
+        # Process-global backend switches, the same two Dreamer exposes as
+        # `perf.cudnn_benchmark` / `perf.tf32`. Every shape here is static, so
+        # cuDNN's per-shape algorithm search runs once. PyTorch already lets
+        # convolutions use TF32 (`cudnn.allow_tf32`); `tf32` adds the matmuls,
+        # i.e. the Linear heads.
+        if self.device.type == "cuda":
+            if self.cudnn_benchmark:
+                torch.backends.cudnn.benchmark = True
+            if self.tf32:
+                torch.set_float32_matmul_precision("high")
         proof_env = make_env()
         obs_shape = tuple(proof_env.observation_spec[self.obs_key].shape)
         action_spec = proof_env.action_spec
@@ -312,20 +329,24 @@ class BBFAlgorithm(BaseAlgorithm):
         1 against the target network, where there is nothing to fuse and a
         recompile would cost more than the launches it saves.
 
-        Default mode, not ``reduce-overhead``: the latter captures CUDA graphs
-        against a fixed memory pool, and ``_shrink_and_perturb`` rewrites every
-        parameter and rebuilds the optimiser every ``reset_interval`` gradient
-        steps. Graph capture is a separate tweak from graph compilation, and
-        pairing it with periodic resets is not something this knob should
-        decide silently.
+        ``compile=True`` means default mode, not ``reduce-overhead``: the latter
+        captures CUDA graphs against a fixed memory pool, and
+        ``_shrink_and_perturb`` rewrites every parameter and rebuilds the
+        optimiser every ``reset_interval`` gradient steps. Graph capture is a
+        separate tweak from graph compilation, and pairing it with periodic
+        resets is not something this knob should decide silently. A mode string
+        (``"max-autotune"``, ...) is passed through for exactly that reason:
+        asking for it is explicit, and autotuning's one-off search cost lands in
+        the measured wall-clock of whichever cell compiles with a cold cache.
         """
         if not self.compile:
             return
+        mode = self.compile if isinstance(self.compile, str) else "default"
         for net in (self.network, self.target_network):
             for name in ("forward", "encode", "project", "predict", "q_logits"):
-                setattr(net, name, torch.compile(getattr(net, name)))
+                setattr(net, name, torch.compile(getattr(net, name), mode=mode))
             transition = net.transition_model
-            transition.forward = torch.compile(transition.forward)
+            transition.forward = torch.compile(transition.forward, mode=mode)
 
     def _autocast(self):
         """bf16 autocast for the gradient step, or a no-op.
