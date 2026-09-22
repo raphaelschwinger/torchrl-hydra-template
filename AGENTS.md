@@ -64,11 +64,13 @@ BBF (`algorithm=bbf`) builds on the same Atari-100k stack but subclasses
 sample time), adding SPR self-prediction, an Impala-CNN ×4 encoder, periodic
 shrink-and-perturb resets, annealed n-step/discount, DrQ augmentation and an EMA
 target. It requires `trainer.num_envs=1` (a single contiguous stream). Its
-runtime knobs -- `compile`, `amp`, `channels_last`, `pin_memory` and
-`storage_device` -- all default to off, so the defaults are the published
+runtime knobs -- `compile`, `amp`, `channels_last`, `pin_memory`,
+`storage_device`, `cudnn_benchmark` and `tf32` -- all default to off, so the defaults are the published
 configuration; `compile` wraps the network entry points rather than `_update`,
 whose annealed discount and horizon would otherwise force a recompile on every
-gradient step.
+gradient step. `compile` takes `false`, `true` (torch.compile's `default` mode)
+or a mode string (`max-autotune`, ...), the same spelling as Dreamer's
+`dreamer_config.compile`.
 DreamerV3's speed knobs are all off by default, like BBF's:
 `dreamer_config.compile` (`false`; `true` means torch.compile's `default` mode,
 any string is passed through as the mode), `buffer_config.pin_memory` and every

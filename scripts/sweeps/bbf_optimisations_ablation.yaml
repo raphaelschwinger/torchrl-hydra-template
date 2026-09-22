@@ -49,6 +49,15 @@ runs:
       - exp_name=bbf_ablation_compile
       - algorithm.compile=true
 
+  max_autotune:
+    label: "torch.compile (max-autotune-no-cudagraphs)"
+    axis: network
+    semantics_preserving: true
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_max_autotune_no_graphs
+      - algorithm.compile=max-autotune-no-cudagraphs
+
   amp:
     label: "Mixed precision (bf16)"
     axis: network
@@ -70,6 +79,24 @@ runs:
     overrides:
       - exp_name=bbf_ablation_channels_last
       - algorithm.channels_last=true
+
+  cudnn_benchmark:
+    label: "cuDNN benchmark"
+    axis: network
+    semantics_preserving: true
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_cudnn_benchmark
+      - algorithm.cudnn_benchmark=true
+
+  tf32:
+    label: "TF32 matmuls"
+    axis: network
+    semantics_preserving: true
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_tf32
+      - algorithm.tf32=true
 
   batch64:
     label: "Optimisation batch 64"
@@ -142,11 +169,24 @@ runs:
 
   combined:
     label: "Combined"
-    axis: ""
-    semantics_preserving: true
+    axis: combined
+    semantics_preserving: false
     seeds: [1, 2, 3, 4, 5]
-    # Fill the overrides in from the measured table
-    enabled: false
+    enabled: true
     experiment: bbf/atari100k
     overrides:
       - exp_name=bbf_ablation_combined
+      - algorithm.compile=true
+      - algorithm.amp=true
+      - algorithm.storage_device=cuda
+
+  combined_no_compile:
+    label: "Combined (no compile)"
+    axis: combined
+    semantics_preserving: false
+    seeds: [1, 2, 3, 4, 5]
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_combined_no_compile
+      - algorithm.amp=true
+      - algorithm.storage_device=cuda

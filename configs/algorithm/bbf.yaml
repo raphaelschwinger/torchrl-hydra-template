@@ -65,11 +65,15 @@ intensity_scale: 0.05
 # Runtime tweaks (all off by default: BBF's published configuration enables
 # none of them, so these defaults *are* the paper's configuration). Each is a
 # knob for measurement -- see the per-tweak ablation in the RLFast case study.
+# false = eager; true = torch.compile's "default" mode; or a mode string
+# ("max-autotune", ...), as in dreamer's `dreamer_config.compile`.
 compile: false            # torch.compile the learner's network calls
 amp: false                # autocast(bfloat16) on the gradient step
 channels_last: false      # NHWC activations for the Impala conv stack
 pin_memory: false         # pinned host staging + async H2D of a sampled batch
 storage_device: cpu       # replay storage device; "cuda" keeps replay resident
+cudnn_benchmark: false    # cuDNN times conv algorithms once per shape
+tf32: false               # TF32 for float32 matmuls (convs already default to it)
 
 
 # Exploration / collection
