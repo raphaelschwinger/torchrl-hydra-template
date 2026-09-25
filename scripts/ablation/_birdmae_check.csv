@@ -1,0 +1,11 @@
+arm,label,section,game,seed,run_id,state,score,runtime
+Baseline/Audio MAE,Audio MAE,Baseline,HSN,1,paper,finished,23.71,900
+Baseline/our fine-tuning,our fine-tuning,Baseline,HSN,1,paper,finished,43.64,880
+Pretraining/ViT-L BirdSet +,ViT-L BirdSet +,Pretraining,HSN,1,paper,finished,47.84,610
+Pretraining/Epochs 150 ↑,Epochs 150 ↑,Pretraining,HSN,1,paper,finished,51.02,608
+Pretraining/Masking 0.75 ↓,Masking 0.75 ↓,Pretraining,HSN,1,paper,finished,51.61,540
+Pretraining/Batch 1024 ↑,Batch 1024 ↑,Pretraining,HSN,1,paper,finished,52.41,700
+Pretraining/ViT Decoder +,ViT Decoder +,Pretraining,HSN,1,paper,finished,52.25,745
+Pretraining/Mixup 0.3 +,Mixup 0.3 +,Pretraining,HSN,1,paper,finished,53.15,742
+Fine-Tuning/ProtoP Layer +,ProtoP Layer +,Fine-Tuning,HSN,1,paper,finished,55.28,738
+Fine-Tuning/Bird MAE,Bird MAE,Fine-Tuning,HSN,1,paper,finished,55.28,738
