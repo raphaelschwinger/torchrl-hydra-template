@@ -184,3 +184,17 @@ runs:
       - exp_name=bbf_ablation_combined_no_compile
       - algorithm.amp=true
       - algorithm.storage_device=cuda
+  
+  combined_full:
+    label: "Combined"
+    axis: combined
+    semantics_preserving: false
+    seeds: [1, 2, 3, 4, 5]
+    enabled: true
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_combined_full
+      - algorithm.amp=true
+      - algorithm.storage_device=cuda
+      - algorithm.cudnn_benchmark=true
+      - algorithm.tf32=true
