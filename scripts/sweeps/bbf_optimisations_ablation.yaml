@@ -156,12 +156,6 @@ runs:
     axis: data
     seeds: [1, 2, 3, 4, 5]
     semantics_preserving: false
-    # DECLARED BUT NOT RUN. At ~4x the baseline this single row is ~12 h, close
-    # to half the sweep, for a dagger row whose runtime cost is not in doubt.
-    # To run it: `--only baseline,rr8`, which overrides the flag. Note this
-    # changes replay_ratio alone; configs/experiment/bbf/atari100k_rr8.yaml is
-    # the paper's flagship variant and moves reset_interval with it.
-    enabled: false
     experiment: bbf/atari100k
     overrides:
       - exp_name=bbf_ablation_rr8

@@ -386,20 +386,16 @@ runs:
       - algorithm.buffer_config.pin_memory=false
       - algorithm.buffer_config.batch_size=8
 
-  train_ratio512:
-    label: "Train ratio 512"
+
+  train_ratio256:
+    label: "Train ratio 256"
     axis: data
     seeds: [1, 2, 3, 4, 5]
     semantics_preserving: false
-    # DECLARED BUT NOT RUN. `train_ratio` is replayed frames per env step, so
-    # 512 is 4x the committed 128 and roughly 4x the baseline's runtime — half
-    # the sweep again, for a row whose cost is not in doubt. Recorded here
-    # rather than left to prose, so the file says what was skipped. To run it:
-    # `--only baseline,train_ratio512`, which overrides the flag.
-    enabled: false
+    enabled: true
     experiment: dreamer/atari100k
     overrides:
-      - exp_name=dreamer_ablation_train_ratio512
+      - exp_name=dreamer_ablation_train_ratio256
       - algorithm.dreamer_config.compile=false
       - algorithm.dreamer_config.perf.amp=off
       - algorithm.dreamer_config.perf.static_pad=false
@@ -409,7 +405,7 @@ runs:
       - algorithm.dreamer_config.perf.foreach_laprop=false
       - algorithm.dreamer_config.perf.channels_last=false
       - algorithm.buffer_config.pin_memory=false
-      - algorithm.train_ratio=512
+      - algorithm.train_ratio=256
 
   combined:
     label: "Combined (best tweaks on)"
