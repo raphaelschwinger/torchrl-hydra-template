@@ -6,6 +6,12 @@
 #
 # MEASURED SWEEP: the result is wall-clock, so it is not reproducible off this
 # machine. Run it with run_measured_sweep.sh, never run_sweep.sh.
+#
+# BASELINE IS EVERYTHING OFF (the published BBF configuration), which is NOT the
+# committed default: configs/algorithm/bbf.yaml defaults to the `combined_full`
+# row. `common.overrides` therefore switches every runtime knob off, and each
+# row switches its own back on (row overrides come later, and Hydra takes the
+# last value for a key).
 
 common:
   tag: bbf-opt
@@ -21,6 +27,15 @@ common:
     # Already the experiment default; restated so the launched command is
     # self-describing in the cell log.
     - trainer.num_envs=1
+    # Every runtime knob off -- the baseline. Spelled out rather than relying
+    # on the algorithm defaults, which are the combined setting.
+    - algorithm.compile=false
+    - algorithm.amp=false
+    - algorithm.channels_last=false
+    - algorithm.pin_memory=false
+    - algorithm.storage_device=cpu
+    - algorithm.cudnn_benchmark=false
+    - algorithm.tf32=false
 
 # Every row sets its own `exp_name`, because openrlbenchmark groups runs by
 # (exp_name, env_id): left at the default `bbf`, all eleven rows would merge

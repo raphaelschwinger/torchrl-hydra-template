@@ -203,15 +203,19 @@ python src/train.py experiment=bbf/atari100k \
     algorithm.max_update_horizon=3 algorithm.min_gamma=0.997                  # no annealing
 ```
 
-Runtime switches (each changes how fast the same computation runs, not what is
-computed -- all default to off, so the published configuration is unaffected):
+Runtime switches (each changes how fast the same computation runs; only `amp`
+changes what is computed). They default to the optimisation ablation's
+`combined_full` setting -- `amp`, `storage_device=cuda`, `cudnn_benchmark` and
+`tf32` on, the rest off. The published configuration has all of them off:
 
 ```shell
+python src/train.py experiment=bbf/atari100k algorithm.amp=false algorithm.storage_device=cpu \
+    algorithm.cudnn_benchmark=false algorithm.tf32=false                       # published BBF (all off)
 python src/train.py experiment=bbf/atari100k algorithm.compile=true
 python src/train.py experiment=bbf/atari100k algorithm.compile=max-autotune   # or any mode string
 python src/train.py experiment=bbf/atari100k algorithm.amp=true               # bf16 autocast
 python src/train.py experiment=bbf/atari100k algorithm.channels_last=true     # NHWC convs
-python src/train.py experiment=bbf/atari100k algorithm.pin_memory=true        # pinned + async H2D
+python src/train.py experiment=bbf/atari100k algorithm.pin_memory=true algorithm.storage_device=cpu  # pinned + async H2D
 python src/train.py experiment=bbf/atari100k algorithm.storage_device=cuda    # replay on the GPU
 python src/train.py experiment=bbf/atari100k algorithm.cudnn_benchmark=true   # cuDNN conv algorithm search
 python src/train.py experiment=bbf/atari100k algorithm.tf32=true              # TF32 matmuls

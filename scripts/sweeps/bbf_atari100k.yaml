@@ -13,6 +13,8 @@ common:
     - exp_name=bbf_test
     - trainer.num_envs=1
     - trainer.log_every_n_steps=1000
+    # The combined setting, now also the algorithm default; restated so the
+    # launched command is self-describing and survives a default change.
     - algorithm.amp=true
     - algorithm.storage_device=cuda
     - algorithm.cudnn_benchmark=true

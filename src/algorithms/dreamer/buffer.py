@@ -26,9 +26,9 @@ class Buffer:
         #! trained on immediately at least once.
         self.online = bool(getattr(config, "online", True))
         #! Pinned (page-locked) staging for the CPU->GPU copy of a sampled batch.
-        #! Off by default like every runtime knob; r2dreamer pins whenever
-        #! replay lives on the CPU.
-        self.pin_memory = bool(getattr(config, "pin_memory", False))
+        #! On by default (the optimisation ablation's combined setting), as
+        #! r2dreamer pins whenever replay lives on the CPU.
+        self.pin_memory = bool(getattr(config, "pin_memory", True))
         self._seq_len = self.batch_length + 1
         self._online_queue: deque[tuple[int, int]] = deque()  # (per-env start step, env)
         self._steps_per_env = 0        # per-env transitions added so far

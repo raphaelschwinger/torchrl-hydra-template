@@ -17,6 +17,8 @@ common:
     - checkpoint.enabled=false
     - algorithm.world_model_video_log_every=0
     - algorithm.agent_video_log_every=0
+    # The combined setting, now also the algorithm default; restated so the
+    # launched command is self-describing and survives a default change.
     - algorithm.dreamer_config.compile=max-autotune
     - algorithm.dreamer_config.perf.amp=bf16
     - algorithm.dreamer_config.perf.cudnn_benchmark=true

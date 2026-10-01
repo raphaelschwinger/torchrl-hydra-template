@@ -65,16 +65,22 @@ sample time), adding SPR self-prediction, an Impala-CNN ×4 encoder, periodic
 shrink-and-perturb resets, annealed n-step/discount, DrQ augmentation and an EMA
 target. It requires `trainer.num_envs=1` (a single contiguous stream). Its
 runtime knobs -- `compile`, `amp`, `channels_last`, `pin_memory`,
-`storage_device`, `cudnn_benchmark` and `tf32` -- all default to off, so the defaults are the published
-configuration; `compile` wraps the network entry points rather than `_update`,
+`storage_device`, `cudnn_benchmark` and `tf32` -- default to the optimisation
+ablation's combined setting (`amp`, `storage_device: cuda`, `cudnn_benchmark`,
+`tf32` on; the rest off). The published configuration has all of them off, and
+`scripts/sweeps/bbf_optimisations_ablation.yaml` pins them off explicitly for
+its baseline; `compile` wraps the network entry points rather than `_update`,
 whose annealed discount and horizon would otherwise force a recompile on every
 gradient step. `compile` takes `false`, `true` (torch.compile's `default` mode)
 or a mode string (`max-autotune`, ...), the same spelling as Dreamer's
 `dreamer_config.compile`.
-DreamerV3's speed knobs are all off by default, like BBF's:
-`dreamer_config.compile` (`false`; `true` means torch.compile's `default` mode,
-any string is passed through as the mode), `buffer_config.pin_memory` and every
-`dreamer_config.perf.*` flag (`amp: "off"`). The Dreamer README lists the
+DreamerV3's speed knobs default to its optimisation ablation's combined
+setting, like BBF's: `dreamer_config.compile: max-autotune` (`false` = eager;
+`true` means torch.compile's `default` mode, any string is passed through as the
+mode), `buffer_config.pin_memory: true`, and `perf.amp: bf16`,
+`perf.cudnn_benchmark`, `perf.tf32`, `perf.channels_last` on (`static_pad`,
+`dedup_value`, `foreach_laprop` off). Smoke tests and CPU runs override
+`compile=false`. The Dreamer README lists the
 combination that roughly matches NM512/r2dreamer (`compile: reduce-overhead`,
 `perf.tf32`, `perf.amp: fp16`, `pin_memory`, `perf.channels_last`).
 `perf.channels_last` mirrors BBF's knob: NHWC conv weights (converted once in

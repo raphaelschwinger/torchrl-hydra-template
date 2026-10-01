@@ -39,16 +39,17 @@ AMP_MODES = ("bf16", "fp16", "off")
 
 @dataclasses.dataclass
 class PerfFlags:
-    # All off by default, like BBF's runtime knobs; the Dreamer README lists
-    # the combination that roughly matches NM512/r2dreamer.
+    # Defaults are the optimisation ablation's combined setting, like BBF's
+    # runtime knobs; the Dreamer README lists the combination that roughly
+    # matches NM512/r2dreamer.
     # Mirrors configs/algorithm/dreamer.yaml.
     static_pad: bool = False
     dedup_value: bool = False
-    cudnn_benchmark: bool = False
-    tf32: bool = False
-    amp: str = "off"
+    cudnn_benchmark: bool = True
+    tf32: bool = True
+    amp: str = "bf16"
     foreach_laprop: bool = False
-    channels_last: bool = False
+    channels_last: bool = True
 
 
 # Module-level singleton read by networks.py / rssm.py / model/dreamerv3.py /

@@ -132,19 +132,21 @@ class BBFAlgorithm(BaseAlgorithm):
         max_frames_per_traj: int = -1,
         renormalize_latent: bool = True,
         # --- Runtime tweaks -------------------------------------------------
-        # All off by default: BBF's published configuration enables none of
-        # them, so the defaults here *are* the paper's configuration and no
-        # existing run changes. Each is a knob for measurement.
+        # Defaults are the optimisation ablation's combined setting
+        # (scripts/sweeps/bbf_optimisations_ablation.yaml, `combined_full`):
+        # amp, GPU-resident replay, cuDNN benchmark and TF32 on; compile,
+        # channels_last and pin_memory off. The published BBF configuration
+        # enables none of them; turn them all off to reproduce it exactly.
         # False = eager; True = torch.compile's "default" mode; or a mode string
         # ("max-autotune", ...), passed straight through. Same spelling as
         # Dreamer's `dreamer_config.compile`.
         compile: bool | str = False,  # torch.compile the learner's network calls
-        amp: bool = False,  # autocast(bfloat16) on the gradient step
+        amp: bool = True,  # autocast(bfloat16) on the gradient step
         channels_last: bool = False,  # NHWC activations for the conv stack
         pin_memory: bool = False,  # pinned host staging + async H2D of a sample
-        storage_device: str = "cpu",  # replay storage device; "cuda" keeps it resident
-        cudnn_benchmark: bool = False,  # cuDNN times conv algorithms once per shape
-        tf32: bool = False,  # TF32 for float32 matmuls (convs already default to it)
+        storage_device: str = "cuda",  # replay storage device; "cuda" keeps it resident
+        cudnn_benchmark: bool = True,  # cuDNN times conv algorithms once per shape
+        tf32: bool = True,  # TF32 for float32 matmuls (convs already default to it)
     ) -> None:
         super().__init__(device)
         self.obs_key = obs_key

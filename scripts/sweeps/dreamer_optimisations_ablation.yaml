@@ -8,10 +8,10 @@
 # machine. Run it with run_measured_sweep.sh, never run_sweep.sh — a parallel
 # neighbour on another card still shares this host's CPU and PCIe.
 #
-# BASELINE IS EVERYTHING OFF, which is also the committed default. Every row
-# still spells out every flag instead of relying on it, so the sweep stays
-# valid if a default changes: the baseline switches all off and each row
-# switches exactly one back on.
+# BASELINE IS EVERYTHING OFF, which is NOT the committed default:
+# configs/algorithm/dreamer.yaml defaults to the `combined` row. Every row
+# therefore spells out every flag instead of relying on the defaults: the
+# baseline switches all off and each row switches exactly one back on.
 # So a tweak that earns its keep shows up as a NEGATIVE delta.
 
 common:
