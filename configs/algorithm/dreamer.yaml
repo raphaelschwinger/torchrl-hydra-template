@@ -20,7 +20,7 @@ buffer_config:
   batch_size: 16
   batch_length: 64
   online: true    # official DreamerV3 replay.online: fresh segments are always trained on once before uniform sampling resumes
-  pin_memory: false # stage the sampled batch in page-locked host memory so the CPU->GPU copy is async (runtime knob, off by default)
+  pin_memory: true  # stage the sampled batch in page-locked host memory so the CPU->GPU copy is async (runtime knob, on in the combined setting)
   max_size: 5e6
   storage_device: cpu #! Keep Replay Buffer on CPU (Mabe use GPU on Kiel)
   device: ${trainer.accelerator}
@@ -37,24 +37,27 @@ dreamer_config:
   # false = eager; true = torch.compile mode "default" (no CUDA graphs); or a
   # mode string: reduce-overhead (CUDA graphs, r2dreamer), max-autotune
   # (autotuned kernels + CUDA graphs, long first compile), ...
-  compile: false
+  compile: max-autotune
   log_grads: False
   device: ${trainer.accelerator}
 
-  # Speed-optimisation toggles. All off by default, like BBF's runtime knobs
-  # (so is compile above and buffer_config.pin_memory). The Dreamer README
-  # lists the combination that roughly matches NM512/r2dreamer.
+  # Speed-optimisation toggles. Defaults (with compile above and
+  # buffer_config.pin_memory) are the optimisation ablation's combined setting
+  # (scripts/sweeps/dreamer_optimisations_ablation.yaml, `combined`), as for
+  # BBF's runtime knobs. Set compile=false, amp="off" and every flag false to
+  # get the unoptimised port. The Dreamer README lists the combination that
+  # roughly matches NM512/r2dreamer.
   perf:
     static_pad: false      # native padding=k//2 conv instead of r2dreamer's runtime F.pad
     dedup_value: false     # reuse trainable value forward for targets instead of r2dreamer's separate frozen forward
-    cudnn_benchmark: false # torch.backends.cudnn.benchmark (r2dreamer leaves it commented out)
-    tf32: false            # float32_matmul_precision="high" for f32 ops outside autocast (r2dreamer sets it in train.py)
-    amp: "off"             # mixed precision: bf16 = bf16 autocast, no grad scaling (official DreamerV3)
+    cudnn_benchmark: true  # torch.backends.cudnn.benchmark (r2dreamer leaves it commented out)
+    tf32: true             # float32_matmul_precision="high" for f32 ops outside autocast (r2dreamer sets it in train.py)
+    amp: bf16              # mixed precision: bf16 = bf16 autocast, no grad scaling (official DreamerV3)
                            #                  fp16 = fp16 autocast + GradScaler (r2dreamer default)
                            #                  "off" = full f32, no autocast
                            # Quote "off": bare off is a YAML boolean. On the CLI, perf.amp=off is fine.
     foreach_laprop: false  # batched torch._foreach_* optimiser step instead of r2dreamer's original per-parameter loop
-    channels_last: false   # NHWC conv weights + encoder input. r2dreamer's input permute ran every conv
+    channels_last: true    # NHWC conv weights + encoder input. r2dreamer's input permute ran every conv
                            # activation NHWC; off leaves this port's first encoder conv NCHW
                            # (NCHW TorchRL input). Same knob as BBF's algorithm.channels_last.
 
