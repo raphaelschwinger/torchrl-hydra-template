@@ -157,10 +157,13 @@ Three design decisions required custom adaptation due to TorchRL conventions:
 ### Performance flags
 
 `dreamer_config.perf` (see `configs/algorithm/dreamer.yaml`) gates speed
-optimisations behind independent flags. **Every runtime knob is off by
-default**, like BBF's: `dreamer_config.compile: false`,
-`buffer_config.pin_memory: false`, and every `perf.*` flag off (`amp: "off"`,
-full f32). `dreamer_config.compile` takes `true` (torch.compile's `default`
+optimisations behind independent flags. **The defaults are the optimisation
+ablation's `combined` setting**, like BBF's: `dreamer_config.compile:
+max-autotune`, `buffer_config.pin_memory: true`, `perf.amp: bf16`,
+`perf.cudnn_benchmark`, `perf.tf32` and `perf.channels_last` on;
+`static_pad`, `dedup_value` and `foreach_laprop` off. For the unoptimised port
+(full f32, eager) set `compile=false`, `perf.amp=off` and every flag `false`,
+as `scripts/sweeps/dreamer_optimisations_ablation.yaml`'s baseline does. `dreamer_config.compile` takes `true` (torch.compile's `default`
 mode, no CUDA graphs) or a mode string (`reduce-overhead`, `max-autotune`, …).
 
 Roughly matching [NM512/r2dreamer](https://github.com/NM512/r2dreamer) takes
@@ -195,7 +198,7 @@ python src/train.py experiment=dreamer/atari100k algorithm.dreamer_config.perf.c
 
 One more speed knob lives outside `perf`, on the buffer it configures:
 `buffer_config.pin_memory` (`buffer.py`) stages a sampled batch in page-locked
-host memory so the CPU→GPU copy is async. Numerics-identical; off by default
+host memory so the CPU→GPU copy is async. Numerics-identical; on by default
 (r2dreamer pins whenever replay lives on the CPU). (r2dreamer's
 `storage_device` defaults to the training device, so there the copy never
 happens; this port keeps replay on the CPU.)
