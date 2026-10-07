@@ -1,0 +1,52 @@
+# DreamerV3 on Bank Heist, 5 seeds, with EVERY runtime tweak off -- the stock
+# configuration of dreamer_optimisations_ablation.yaml's `baseline` row.
+#
+# Diagnostic: the fast configuration (dreamer_atari100k.yaml) scores ~60-75 on
+# Bank Heist across three launches, against 398 published. If the stock
+# configuration is just as low, the runtime tweaks are not the cause.
+#
+#   ./scripts/run_sweep.sh --gpus 1,2 \
+#     --sweep scripts/sweeps/dreamer_atari100k_stock.yaml
+#
+# Every flag is spelled out because the algorithm defaults are the combined
+# (fast) setting, not this one.
+
+common:
+  tag: dreamer-stock
+  seeds: [1, 2, 3, 4, 5]
+  total_frames: 100_000
+  overrides:
+    - exp_name=dreamer_stock
+    - trainer.num_envs=1
+    - trainer.log_every_n_steps=1000
+    - checkpoint.enabled=false
+    - algorithm.world_model_video_log_every=0
+    - algorithm.agent_video_log_every=0
+    - algorithm.dreamer_config.compile=false
+    - algorithm.dreamer_config.perf.amp=off
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=false
+    - algorithm.dreamer_config.perf.tf32=false
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=false
+    - algorithm.buffer_config.pin_memory=false
+  smoke_overrides:
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=2
+    - trainer.total_frames=20
+    - trainer.log_every_n_steps=10
+    - model.deter=64
+    - model.hidden=64
+    - model.discrete=8
+    - model.depth=8
+    - model.units=64
+    - algorithm.buffer_config.batch_size=16
+    - algorithm.buffer_config.batch_length=8
+    - algorithm.buffer_config.max_size=500
+    - algorithm.dreamer_config.imag_horizon=3
+
+runs:
+  dreamer_stock_bank_heist:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=BankHeist]

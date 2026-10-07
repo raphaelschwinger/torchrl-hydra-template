@@ -425,3 +425,26 @@ runs:
       - algorithm.dreamer_config.perf.foreach_laprop=false
       - algorithm.dreamer_config.perf.channels_last=true
       - algorithm.buffer_config.pin_memory=true
+
+  combined_train_ratio256:
+    label: "Combined + train ratio 256"
+    axis: ""
+    # `combined` at the official DreamerV3 atari100k train ratio (256; ours
+    # defaults to 128). Asks whether the score gain of `train_ratio256` holds
+    # on top of the runtime tweaks, and what it costs in wall-clock there.
+    # Changes how much the learner trains, so not semantics-preserving.
+    semantics_preserving: false
+    seeds: [1, 2, 3, 4, 5]
+    experiment: dreamer/atari100k
+    overrides:
+      - exp_name=dreamer_ablation_combined_train_ratio256
+      - algorithm.dreamer_config.compile=max-autotune
+      - algorithm.dreamer_config.perf.amp=bf16
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=true
+      - algorithm.dreamer_config.perf.tf32=true
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.dreamer_config.perf.channels_last=true
+      - algorithm.buffer_config.pin_memory=true
+      - algorithm.train_ratio=256
