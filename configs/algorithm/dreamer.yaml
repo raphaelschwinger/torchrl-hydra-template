@@ -21,7 +21,7 @@ buffer_config:
   batch_length: 64
   online: true    # official DreamerV3 replay.online: fresh segments are always trained on once before uniform sampling resumes
   pin_memory: true  # stage the sampled batch in page-locked host memory so the CPU->GPU copy is async (runtime knob, on in the combined setting)
-  max_size: 5e6
+  max_size: ${trainer.total_frames}  # agent steps: keep the whole run (the buffer adds headroom for terminal rows)
   storage_device: cpu #! Keep Replay Buffer on CPU (Mabe use GPU on Kiel)
   device: ${trainer.accelerator}
 

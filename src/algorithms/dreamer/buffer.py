@@ -30,7 +30,10 @@ class Buffer:
         #! Reward of the last stored TorchRL transition: it arrives with the
         #! first observation of the next collector batch.
         self._pending_reward = None
-        self.max_size = int(config.max_size)
+        #! `max_size` counts agent steps. _to_dreamer_rows adds one terminal row
+        #! per episode on top, so storage gets 5% headroom for them: a run of
+        #! max_size steps then fits without overwriting its oldest data.
+        self.max_size = int(float(config.max_size) * 1.05)
         #! Online sampling (official DreamerV3 `replay.online: True`, absent from
         #! R2Dreamer): every fresh, non-overlapping (batch_length+1)-step segment
         #! is queued and served before uniform samples, so all new experience is
@@ -49,7 +52,7 @@ class Buffer:
             # sequence.  The previous ndim=2 design stored each transition as a
             # 1-timestep trajectory (shape [N, 1, ...]), which made SliceSampler
             storage=LazyTensorStorage(
-                max_size=int(config.max_size), device=self.storage_device
+                max_size=self.max_size, device=self.storage_device
             ),
             #! traj_key="episode" groups all of env-i's steps into one long stream
             sampler=SliceSampler(
