@@ -409,9 +409,9 @@ class DreamerV3(nn.Module):
 
         # === Reward + continuation ===
         losses["rew"] = torch.mean(
-            -self.reward(feat).log_prob(to_f32(data["next", "reward"]))
+            -self.reward(feat).log_prob(to_f32(data["reward"]))
         )
-        cont = 1.0 - to_f32(data["next", "terminated"])
+        cont = 1.0 - to_f32(data["is_terminal"])
         losses["con"] = torch.mean(-self.cont(feat).log_prob(cont))
 
         metrics["dyn_entropy"] = torch.mean(self.rssm.get_dist(prior_logit).entropy())
@@ -490,9 +490,9 @@ class DreamerV3(nn.Module):
         metrics.update(tools.tensorstats(imag_action, "action"))
 
         # === Replay-based value learning (gradients flow through world model) ===
-        last = to_f32(data["next", "done"])
-        term = to_f32(data["next", "terminated"])
-        reward = to_f32(data["next", "reward"])
+        last = to_f32(data["is_last"])
+        term = to_f32(data["is_terminal"])
+        reward = to_f32(data["reward"])
         feat = self.rssm.get_feat(post_stoch, post_deter)
         boot = ret[:, 0].reshape(B, T, 1)
         # Same ground-truth trade-off as the imagination block above.
