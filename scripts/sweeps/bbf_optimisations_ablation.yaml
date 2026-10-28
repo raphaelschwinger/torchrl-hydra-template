@@ -6,6 +6,12 @@
 #
 # MEASURED SWEEP: the result is wall-clock, so it is not reproducible off this
 # machine. Run it with run_measured_sweep.sh, never run_sweep.sh.
+#
+# BASELINE IS EVERYTHING OFF (the published BBF configuration), which is NOT the
+# committed default: configs/algorithm/bbf.yaml defaults to the `combined_full`
+# row. `common.overrides` therefore switches every runtime knob off, and each
+# row switches its own back on (row overrides come later, and Hydra takes the
+# last value for a key).
 
 common:
   tag: bbf-opt
@@ -21,6 +27,15 @@ common:
     # Already the experiment default; restated so the launched command is
     # self-describing in the cell log.
     - trainer.num_envs=1
+    # Every runtime knob off -- the baseline. Spelled out rather than relying
+    # on the algorithm defaults, which are the combined setting.
+    - algorithm.compile=false
+    - algorithm.amp=false
+    - algorithm.channels_last=false
+    - algorithm.pin_memory=false
+    - algorithm.storage_device=cpu
+    - algorithm.cudnn_benchmark=false
+    - algorithm.tf32=false
 
 # Every row sets its own `exp_name`, because openrlbenchmark groups runs by
 # (exp_name, env_id): left at the default `bbf`, all eleven rows would merge
@@ -49,6 +64,15 @@ runs:
       - exp_name=bbf_ablation_compile
       - algorithm.compile=true
 
+  max_autotune:
+    label: "torch.compile (max-autotune-no-cudagraphs)"
+    axis: network
+    semantics_preserving: true
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_max_autotune_no_graphs
+      - algorithm.compile=max-autotune-no-cudagraphs
+
   amp:
     label: "Mixed precision (bf16)"
     axis: network
@@ -70,6 +94,24 @@ runs:
     overrides:
       - exp_name=bbf_ablation_channels_last
       - algorithm.channels_last=true
+
+  cudnn_benchmark:
+    label: "cuDNN benchmark"
+    axis: network
+    semantics_preserving: true
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_cudnn_benchmark
+      - algorithm.cudnn_benchmark=true
+
+  tf32:
+    label: "TF32 matmuls"
+    axis: network
+    semantics_preserving: true
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_tf32
+      - algorithm.tf32=true
 
   batch64:
     label: "Optimisation batch 64"
@@ -129,12 +171,6 @@ runs:
     axis: data
     seeds: [1, 2, 3, 4, 5]
     semantics_preserving: false
-    # DECLARED BUT NOT RUN. At ~4x the baseline this single row is ~12 h, close
-    # to half the sweep, for a dagger row whose runtime cost is not in doubt.
-    # To run it: `--only baseline,rr8`, which overrides the flag. Note this
-    # changes replay_ratio alone; configs/experiment/bbf/atari100k_rr8.yaml is
-    # the paper's flagship variant and moves reset_interval with it.
-    enabled: false
     experiment: bbf/atari100k
     overrides:
       - exp_name=bbf_ablation_rr8
@@ -142,11 +178,38 @@ runs:
 
   combined:
     label: "Combined"
-    axis: ""
-    semantics_preserving: true
+    axis: combined
+    semantics_preserving: false
     seeds: [1, 2, 3, 4, 5]
-    # Fill the overrides in from the measured table
-    enabled: false
+    enabled: true
     experiment: bbf/atari100k
     overrides:
       - exp_name=bbf_ablation_combined
+      - algorithm.compile=true
+      - algorithm.amp=true
+      - algorithm.storage_device=cuda
+
+  combined_no_compile:
+    label: "Combined (no compile)"
+    axis: combined
+    semantics_preserving: false
+    seeds: [1, 2, 3, 4, 5]
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_combined_no_compile
+      - algorithm.amp=true
+      - algorithm.storage_device=cuda
+  
+  combined_full:
+    label: "Combined"
+    axis: combined
+    semantics_preserving: false
+    seeds: [1, 2, 3, 4, 5]
+    enabled: true
+    experiment: bbf/atari100k
+    overrides:
+      - exp_name=bbf_ablation_combined_full
+      - algorithm.amp=true
+      - algorithm.storage_device=cuda
+      - algorithm.cudnn_benchmark=true
+      - algorithm.tf32=true

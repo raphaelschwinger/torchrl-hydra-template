@@ -1,0 +1,47 @@
+# BBF on the two Atari-100k validation games (Breakout,
+# H.E.R.O.; see the paper's app:subsets), 5 seeds each, in the fastest
+# configuration its optimisation ablation ended on.
+#
+#   ./scripts/run_sweep.sh --gpus 1,2 \
+#     --sweep scripts/sweeps/bbf_atari100k_val.yaml \
+#     --sweep scripts/sweeps/dreamer_atari100k_val.yaml
+
+common:
+  tag: val-atari100k
+  seeds: [1, 2, 3, 4, 5]
+  total_frames: 100_000
+  overrides:
+    - exp_name=bbf_val
+    - trainer.num_envs=1
+    - trainer.log_every_n_steps=1000
+    # The combined setting, now also the algorithm default; restated so the
+    # launched command is self-describing and survives a default change.
+    - algorithm.amp=true
+    - algorithm.storage_device=cuda
+    - algorithm.cudnn_benchmark=true
+    - algorithm.tf32=true
+  smoke_overrides:
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=2
+    - trainer.total_frames=40
+    - trainer.log_every_n_steps=8
+    - algorithm.min_replay_history=8
+    - algorithm.batch_size=2
+    - algorithm.replay_ratio=1
+    - algorithm.replay_capacity=200
+    - algorithm.max_update_horizon=3
+    - algorithm.min_update_horizon=1
+    - algorithm.spr_depth=2
+    - algorithm.width_scale=1
+    - algorithm.hidden_dim=64
+    - algorithm.reset_interval=12
+    - algorithm.eps_annealing_frames=8
+
+runs:
+  bbf_breakout:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Breakout]
+
+  bbf_hero:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Hero]

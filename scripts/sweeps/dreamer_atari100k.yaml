@@ -1,0 +1,55 @@
+# DreamerV3 on the three test Atari-100k games, 5 seeds each, in the fastest
+# configuration its optimisation ablation ended on.
+#
+#   ./scripts/run_sweep.sh --gpus 2,3 \
+#     --sweep scripts/sweeps/bbf_atari100k.yaml \
+#     --sweep scripts/sweeps/dreamer_atari100k.yaml
+#
+
+common:
+  tag: test-atari100k
+  seeds: [1, 2, 3, 4, 5]
+  total_frames: 100_000
+  overrides:
+    - exp_name=dreamer_test
+    - trainer.num_envs=1
+    - trainer.log_every_n_steps=1000
+    - checkpoint.enabled=false
+    - algorithm.world_model_video_log_every=0
+    - algorithm.agent_video_log_every=0
+    # The combined setting, now also the algorithm default; restated so the
+    # launched command is self-describing and survives a default change.
+    - algorithm.dreamer_config.compile=max-autotune
+    - algorithm.dreamer_config.perf.amp=bf16
+    - algorithm.dreamer_config.perf.cudnn_benchmark=true
+    - algorithm.dreamer_config.perf.tf32=true
+    - algorithm.dreamer_config.perf.channels_last=true
+    - algorithm.buffer_config.pin_memory=true
+  smoke_overrides:
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=2
+    - trainer.total_frames=20
+    - trainer.log_every_n_steps=10
+    - model.deter=64
+    - model.hidden=64
+    - model.discrete=8
+    - model.depth=8
+    - model.units=64
+    - algorithm.buffer_config.batch_size=16
+    - algorithm.buffer_config.batch_length=8
+    - algorithm.buffer_config.max_size=500
+    # compile off for smoke
+    - algorithm.dreamer_config.imag_horizon=3
+
+runs:
+  dreamer_assault:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Assault]
+
+  dreamer_bank_heist:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=BankHeist]
+
+  dreamer_road_runner:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=RoadRunner]
