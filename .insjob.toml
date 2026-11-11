@@ -11,3 +11,7 @@ memory = "48g"   # stohl has 62 GB
 
 [env]
 UV_CACHE_DIR = "/datahome/{user}/.cache/uv"
+
+[mounts]
+# /datahome is mounted read-only in jobs; the uv cache must be writable.
+extra = ["/datahome/{user}/.cache/uv:/datahome/{user}/.cache/uv:rw"]
