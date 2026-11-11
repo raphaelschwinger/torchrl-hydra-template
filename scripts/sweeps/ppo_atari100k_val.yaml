@@ -1,0 +1,34 @@
+# PPO on the two Atari-100k validation games (Breakout, H.E.R.O.; see the
+# paper's app:subsets), 5 seeds each, in the stock `ppo/ale` configuration
+# (cleanRL ppo_atari.py, 8 envs, 10 epochs).
+#
+#   job run -H stohl --gpu-ids 1 -- \
+#     scripts/run_sweep.sh --gpus 0,0,0 --sweep scripts/sweeps/ppo_atari100k_val.yaml
+#
+# Keep this file and ppo_atari100k.yaml in separate run_sweep.sh calls:
+# `jobs.py --print-tag` takes the first file's tag.
+
+common:
+  tag: val-atari100k
+  seeds: [1, 2, 3, 4, 5]
+  total_frames: 100_000
+  overrides:
+    - exp_name=ppo_val
+  smoke_overrides:
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=2
+    - trainer.total_frames=256
+    - trainer.num_envs=1
+    - trainer.log_every_n_steps=64
+    - algorithm.frames_per_batch=64
+    - algorithm.mini_batch_size=32
+    - algorithm.num_epochs=2
+
+runs:
+  ppo_breakout:
+    experiment: ppo/ale
+    overrides: [environment.task=Breakout]
+
+  ppo_hero:
+    experiment: ppo/ale
+    overrides: [environment.task=Hero]
