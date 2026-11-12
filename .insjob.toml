@@ -1,0 +1,17 @@
+# insjob (https://github.com/raphaelschwinger/insjob): `job run -- <cmd>` runs a
+# pushed commit of this repo in .devcontainer/ on an INS GPU server.
+name = "torchrl-hydra-template"
+devcontainer = ".devcontainer/devcontainer.json"
+setup = "uv sync --frozen"
+
+[resources]
+gpus = 1
+cpus = 30        # 3 concurrent PPO runs x 8 envs + eval envs; stohl has 32
+memory = "48g"   # stohl has 62 GB
+
+[env]
+UV_CACHE_DIR = "/datahome/{user}/.cache/uv"
+
+[mounts]
+# /datahome is mounted read-only in jobs; the uv cache must be writable.
+extra = ["/datahome/{user}/.cache/uv:/datahome/{user}/.cache/uv:rw"]
