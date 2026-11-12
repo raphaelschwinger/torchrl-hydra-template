@@ -30,7 +30,12 @@ Cross-algorithm results for the two comparison groups (Atari-100k Jamesbond and
 DMC cheetah-run, 3 seeds each) live in **docs/evaluation.md → Benchmark
 results**, with the figures in `docs/figures/`. Regenerate them from W&B with
 `./scripts/make_figures.sh --tag <sweep tag> --full --publish`; never hand-edit
-the tables there, they are `rlops` output. `--full` raises rliable's
+the tables there, they are `rlops` output.
+The README's Atari100k-3 test and validation figures
+(`docs/figures/atari100k3.png`, `docs/figures/atari100k_val.png`, with their
+per-run CSVs) come from `scripts/atari100k3_figure.py`, which fetches the
+`test-atari100k` / `val-atari100k` sweep runs by `exp_name` and refuses to draw
+unless every arm has 5 finished seeds per game. Regenerate them; never edit by hand. `--full` raises rliable's
 Stratified Bootstrap CI rep counts from openrlbenchmark's 10-rep quick-test
 default to its own recommended values — omit it only for a fast layout
 preview, never for a figure that ships.

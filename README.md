@@ -157,6 +157,28 @@ contract, and benchmark results.
 
 ![DMC cheetah-run return](docs/figures/dmc.png)
 
+### Atari100k-3
+
+BBF, DreamerV3 and PPO at the 100k-step budget, 5 seeds each, on the three
+Atari100k-3 test games (Assault, Bank Heist, Road Runner) and the two
+validation games (Breakout, H.E.R.O.). Atari100k-3 is the subset of Atari100k
+whose scores best predict the full 26-game median, chosen with the Atari-5
+recipe. Scores are human-normalised (Atari-5 reference scores). Bars are 95%
+stratified-bootstrap CIs from [rliable](https://github.com/google-research/rliable).
+
+![Atari100k-3 test results](docs/figures/atari100k3.png)
+
+![Atari100k validation results](docs/figures/atari100k_val.png)
+
+The runs come from the `scripts/sweeps/*_atari100k{,_val}.yaml` sweeps.
+Regenerate both figures from W&B, or redraw them from the committed CSVs with
+`--from-csv`:
+
+```shell
+uv run --no-project --with wandb --with rliable --with matplotlib --with pandas \
+    python scripts/atari100k3_figure.py
+```
+
 ## Documentation
 
 | Doc | Covers |
