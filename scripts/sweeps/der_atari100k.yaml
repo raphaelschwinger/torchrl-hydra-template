@@ -4,8 +4,8 @@
 # matching the BBF, DreamerV3 and PPO test sweeps. One insjob job per run, as
 # in rainbow_atari100k.yaml.
 #
-# Keep test and val files in separate run_sweep.sh calls: `jobs.py --print-tag`
-# takes the first file's tag.
+# With scripts/run_sweep.sh instead, keep test and val files in separate calls:
+# `jobs.py --print-tag` takes the first file's tag.
 
 common:
   tag: test-atari100k
