@@ -94,6 +94,9 @@ for each collector batch:                         # step() (overrides DQNAlgorit
 # Data-Efficient Rainbow on Atari-100k (JamesBond by default)
 python src/train.py experiment=rainbow/atari100k
 python src/train.py experiment=rainbow/atari100k environment.task=Breakout
+
+# Standard Rainbow hyperparameters on the same Atari-100k stack
+python src/train.py experiment=rainbow/atari100k_standard
 ```
 
 `configs/algorithm/rainbow.yaml` holds the standard (Dopamine-style) Rainbow
@@ -102,6 +105,9 @@ update every 2000 gradient steps, the smaller 2-layer encoder with hidden dim
 256, and a 100k replay — is a property of the Atari-100k budget, so it lives in
 `configs/experiment/rainbow/atari100k.yaml` rather than in a second algorithm
 config. To run standard Rainbow at a longer budget, drop those overrides.
+`configs/experiment/rainbow/atari100k_standard.yaml` keeps the standard
+values at the 100k budget (`exp_name: rainbow`), with the replay capped at
+100k transitions, which a 100k-step run never exceeds.
 
 ## Environment
 
