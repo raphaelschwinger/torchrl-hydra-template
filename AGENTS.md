@@ -60,7 +60,9 @@ in [`src/environments/atari_wrappers.py`](src/environments/atari_wrappers.py))
 so life loss is evaluated after each aggregated agent step; the rest of the
 stack is TorchRL transforms (`NoopResetEnv`, `GrayScale`, `Resize`, `CatFrames`,
 …). A TorchRL `MaxAndSkipTransform` is also available when episodic-life is not
-required.
+required. The Atari-100k envs use `atari_wrappers.NoopResetEnv`, torchrl's
+random-action no-op reset without its crash when every retry ends in a life
+loss (Breakout); it is otherwise identical, so existing runs stay comparable.
 Rainbow with standard (Dopamine-style) hyperparameters is available as
 `algorithm=rainbow`; the official data-efficient preset (DER) is applied by
 `experiment=rainbow/atari100k`, since it is a property of the 100k budget.

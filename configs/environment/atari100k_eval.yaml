@@ -30,7 +30,7 @@ gymnasium_wrappers:
     skip: 4
 
 transforms:
-  - _target_: torchrl.envs.NoopResetEnv
+  - _target_: src.environments.atari_wrappers.NoopResetEnv
     noops: 30
     random: true
   - _target_: torchrl.envs.ToTensorImage

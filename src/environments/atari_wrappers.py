@@ -11,7 +11,10 @@ import gymnasium as gym
 import numpy as np
 import torch
 from tensordict import TensorDictBase
+from torchrl.envs.transforms import NoopResetEnv as _TorchRLNoopResetEnv
 from torchrl.envs.transforms import Transform
+from torchrl.envs.transforms.transforms import _MAX_NOOPS_TRIALS
+from torchrl.envs.utils import step_mdp
 
 
 class MaxAndSkipEnv(gym.Wrapper):
@@ -81,6 +84,47 @@ class EpisodicLifeEnv(gym.Wrapper):
         if life_lost:
             terminated = True
         return observation, reward, terminated, truncated, info
+
+
+class NoopResetEnv(_TorchRLNoopResetEnv):
+    """TorchRL's ``NoopResetEnv`` that never fails a reset.
+
+    The torchrl transform plays ``noops`` *random* actions (``parent.rand_step``)
+    after each reset, and retries from a fresh reset whenever the env is done
+    before they are through. After ``_MAX_NOOPS_TRIALS + 1`` failed attempts it
+    raises. In the Atari-100k training stack every life loss is a reset
+    (``EpisodicLifeEnv`` sits below this transform), so in a game where random
+    actions lose lives fast (Breakout: FIRE launches the ball) a run eventually
+    draws that streak and crashes mid-training.
+
+    This is torchrl 0.11's loop, drawing the same random numbers, so every reset
+    torchrl completes is unchanged; where torchrl would raise, the state right
+    after the last reset is kept instead (no no-ops applied).
+    """
+
+    def _reset(
+        self, tensordict: TensorDictBase, tensordict_reset: TensorDictBase
+    ) -> TensorDictBase:
+        parent = self.parent
+        if parent is None:
+            raise RuntimeError(f"{type(self).__name__}.parent not found.")
+        if parent.batch_size.numel() > 1:
+            raise ValueError(f"{type(self).__name__} only supports a single env instance.")
+        tensordict = parent._reset_proc_data(tensordict.clone(False), tensordict_reset)
+        done_keys = parent.done_keys
+        noops = self.noops if not self.random else torch.randint(self.noops, (1,)).item()
+
+        for _ in range(_MAX_NOOPS_TRIALS + 1):
+            for _ in range(noops):
+                tensordict = parent.rand_step(tensordict)
+                done = any(bool(tensordict.get(("next", k))) for k in done_keys)
+                tensordict = step_mdp(tensordict, exclude_done=False)
+                if done:
+                    tensordict = parent.reset(tensordict.clone(False))
+                    break
+            else:
+                break  # all no-ops applied
+        return tensordict.exclude(parent.reward_key, inplace=True)
 
 
 class MaxAndSkipTransform(Transform):

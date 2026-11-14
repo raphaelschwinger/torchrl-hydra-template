@@ -139,6 +139,12 @@ episodes and raw rewards.
   instead of `[B, 1]`; `step()` unsqueezes it before calling the loss module
   to avoid it mis-broadcasting against the `[B, 1]`-shaped reward/terminated
   tensors.
+- **Greedy actions are strictly one-hot** (`strict_one_hot_`). torchrl encodes
+  the greedy action as `value == value.max()`, so an exact tie between two
+  actions' expected Q-values (it happens once the C51 softmax saturates) gave
+  a two-hot action. The env runs the first maximum, but the buffer stored both,
+  and `DistributionalDQNLoss` crashed on sampling it. The actor now encodes the
+  first argmax, which is the executed action; untied steps are unchanged.
 
 ## Experimental results
 
