@@ -26,11 +26,13 @@ gymnasium_wrappers:
     skip: 4
   - _target_: src.environments.atari_wrappers.EpisodicLifeEnv
 
-# TorchRL random no-ops, 84x84 grayscale frames stacked 4 deep, and training
-# rewards clipped to {-1, 0, 1} (SignTransform, placed after RewardSum so
-# logged episode returns stay unclipped).
+# Random no-ops (torchrl's NoopResetEnv, which plays random actions, minus its
+# mid-run crash when every retry loses a life; see atari_wrappers.NoopResetEnv),
+# 84x84 grayscale frames stacked 4 deep, and training rewards clipped to
+# {-1, 0, 1} (SignTransform, placed after RewardSum so logged episode returns
+# stay unclipped).
 transforms:
-  - _target_: torchrl.envs.NoopResetEnv
+  - _target_: src.environments.atari_wrappers.NoopResetEnv
     noops: 30
     random: true
   - _target_: torchrl.envs.ToTensorImage

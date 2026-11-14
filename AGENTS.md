@@ -21,6 +21,7 @@ Implemented experiments:
 | TD-MPC2   | dmc cheetah-run | `experiment=tdmpc2/dmc`      |
 | DreamerV3 | ALE/Jamesbond-v5<br>(Atari100k) | `experiment=dreamer/atari100k` |
 | DreamerV3 | DMC cheetah-run<br>(proprio) | `experiment=dreamer/dmc` |
+| Rainbow (standard) | ALE/Jamesbond-v5<br>(Atari100k) | `experiment=rainbow/atari100k_standard` |
 | DER (Rainbow) | ALE/Jamesbond-v5<br>(Atari100k) | `experiment=rainbow/atari100k` |
 | BBF       | ALE/Jamesbond-v5<br>(Atari100k) | `experiment=bbf/atari100k` |
 
@@ -59,10 +60,15 @@ in [`src/environments/atari_wrappers.py`](src/environments/atari_wrappers.py))
 so life loss is evaluated after each aggregated agent step; the rest of the
 stack is TorchRL transforms (`NoopResetEnv`, `GrayScale`, `Resize`, `CatFrames`,
 …). A TorchRL `MaxAndSkipTransform` is also available when episodic-life is not
-required.
+required. The Atari-100k envs use `atari_wrappers.NoopResetEnv`, torchrl's
+random-action no-op reset without its crash when every retry ends in a life
+loss (Breakout); it is otherwise identical, so existing runs stay comparable.
 Rainbow with standard (Dopamine-style) hyperparameters is available as
 `algorithm=rainbow`; the official data-efficient preset (DER) is applied by
 `experiment=rainbow/atari100k`, since it is a property of the 100k budget.
+`experiment=rainbow/atari100k_standard` runs the standard hyperparameters on
+the same Atari-100k stack (`exp_name: rainbow`; replay capped at 100k, which a
+100k-step run never exceeds), the Rainbow baseline of the data-efficient papers.
 BBF (`algorithm=bbf`) builds on the same Atari-100k stack but subclasses
 `BaseAlgorithm` directly: it hand-writes the C51 target and reuses a torchrl
 `PrioritizedSliceSampler` for contiguous-window sampling (n-step computed at
@@ -611,6 +617,7 @@ configs/
   experiment/ppo/{dmc,ale}.yaml — PPO DMC cheetah-run (1M) / Atari-100k JamesBond (100k)
   experiment/tdmpc2/dmc.yaml    — TD-MPC2 DMC cheetah-run
   experiment/rainbow/atari100k.yaml — Data-Efficient Rainbow on Atari-100k
+  experiment/rainbow/atari100k_standard.yaml — standard Rainbow on Atari-100k
   experiment/dreamer/atari100k.yaml — DreamerV3 on Atari-100k (image obs)
   experiment/dreamer/dmc.yaml       — DreamerV3 on DMC cheetah-run, proprio (mlp_keys=observation)
   experiment/bbf/atari100k.yaml     — BBF on Atari-100k (RR2 default; num_envs=1)
@@ -677,6 +684,7 @@ python src/train.py experiment=ppo/dmc             # PPO on DMC cheetah-run (1M 
 python src/train.py experiment=ppo/ale             # PPO on Atari-100k JamesBond (100k steps, GPU)
 python src/train.py experiment=tdmpc2/dmc          # TD-MPC2 model-based control (1M frames, GPU)
 python src/train.py experiment=rainbow/atari100k   # DER on Atari-100k Jamesbond (100k frames, GPU)
+python src/train.py experiment=rainbow/atari100k_standard  # standard Rainbow, same budget
 python src/train.py experiment=dreamer/atari100k   # DreamerV3 on Atari-100k Jamesbond (GPU)
 python src/train.py experiment=dreamer/dmc         # DreamerV3 on DMC cheetah-run, proprio (GPU)
 python src/train.py experiment=bbf/atari100k       # BBF on Atari-100k Jamesbond (RR2, GPU)

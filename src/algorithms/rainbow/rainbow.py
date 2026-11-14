@@ -43,6 +43,29 @@ from torchrl.objectives import DistributionalDQNLoss, DQNLoss, HardUpdate
 
 from src.algorithms.dqn.dqn import DQNAlgorithm
 
+
+def strict_one_hot_(actor: QValueActor) -> QValueActor:
+    """Make a (Distributional)QValueActor emit exactly one hot action on ties.
+
+    torchrl one-hot encodes the greedy action as ``value == value.max(-1)``, so
+    an exact tie between two actions' (expected) Q-values yields a *two*-hot
+    action. The env executes only the first maximum (``OneHot.to_numpy`` is an
+    argmax), but the replay buffer stores the two-hot vector, and
+    ``DistributionalDQNLoss`` crashes when it samples it
+    (``shape '[32, 51]' is invalid for input of size 1683``). Ties do occur
+    once the C51 softmax saturates. Encoding the first argmax instead stores
+    exactly the action that was executed and leaves every untied step as is.
+    """
+    qvalue = actor.module[-1]
+    to_index = qvalue._categorical  # first argmax (over expected values for C51)
+
+    def one_hot(value: torch.Tensor) -> torch.Tensor:
+        index = to_index(value)
+        return nn.functional.one_hot(index, value.shape[-1]).to(torch.long)
+
+    qvalue.action_func_mapping["one_hot"] = one_hot
+    return actor
+
 # Conv encoder shapes. "dqn" is the standard NatureDQN encoder (Mnih et al.
 # 2015, matches src.components.networks.NatureDQN); "data_efficient" is the smaller
 # 2-layer encoder from Data-Efficient Rainbow (van Hasselt et al. 2019),
@@ -225,6 +248,7 @@ class RainbowAlgorithm(DQNAlgorithm):
                 spec=action_spec,
                 in_keys=[self.obs_key],
             ).to(self.device)
+        strict_one_hot_(self.q_actor)
 
         # 3. Exploration. Noisy nets (Fortunato et al. 2018) replace
         #    epsilon-greedy entirely: `NoisyLinear` samples fresh weight noise
