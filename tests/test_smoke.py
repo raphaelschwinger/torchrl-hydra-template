@@ -234,6 +234,17 @@ def test_smoke_der_jamesbond():
     assert len(metrics) > 0
 
 
+def test_smoke_rainbow_standard_jamesbond():
+    """Standard Rainbow (NatureDQN encoder, n=3) on the Atari-100k stack."""
+    pytest.importorskip("ale_py")  # ALE is an optional system dep
+    cfg = load_experiment_cfg("rainbow/atari100k_standard", _der_overrides())
+    from src.train import _train
+
+    metrics = _train(cfg)
+    assert isinstance(metrics, dict)
+    assert len(metrics) > 0
+
+
 def _bbf_overrides() -> list[str]:
     # 40 frames in 1-frame batches: 8 warm-up frames then 32 update steps
     # (replay_ratio=1). Tiny Impala (width_scale=1, hidden_dim=64), short

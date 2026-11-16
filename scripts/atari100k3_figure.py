@@ -55,7 +55,10 @@ SETS = {
         "out": "atari100k3",
         "header": "Aggregate over the three Atari100k-3 test games",
         "filters": {
-            "tags": {"$all": ["test-atari100k"], "$nin": ["dreamer-stock", "bankheist-rerun"]},
+            # crashed-rerun: Rainbow/DER attempts that crashed mid-run and reported
+            # their partial score as finished in W&B; each was rerun.
+            "tags": {"$all": ["test-atari100k"],
+                     "$nin": ["dreamer-stock", "bankheist-rerun", "crashed-rerun"]},
             # an earlier launch of the BBF/Dreamer sweep (2026-09-28/29) is superseded
             "created_at": {"$gte": "2026-10-01T00:00:00Z"},
         },
@@ -71,7 +74,7 @@ SETS = {
         "out": "atari100k_val",
         "header": "Aggregate over the two validation games",
         "filters": {
-            "tags": {"$all": ["val-atari100k"]},
+            "tags": {"$all": ["val-atari100k"], "$nin": ["crashed-rerun"]},
             "name": {"$nin": ["kawsctio"]},  # excluded in the paper's val figure too
         },
         "suffix": "_val",

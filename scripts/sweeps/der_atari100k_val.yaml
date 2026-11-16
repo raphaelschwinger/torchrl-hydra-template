@@ -1,0 +1,33 @@
+# Data-Efficient Rainbow (DER; experiment rainbow/atari100k) on the two
+# Atari-100k validation games (Breakout, H.E.R.O.; see the paper's
+# app:subsets), 5 seeds each. One insjob job per run, as in
+# rainbow_atari100k.yaml.
+#
+# With scripts/run_sweep.sh instead, keep test and val files in separate calls:
+# `jobs.py --print-tag` takes the first file's tag.
+
+common:
+  tag: val-atari100k
+  seeds: [1, 2, 3, 4, 5]
+  total_frames: 100_000
+  overrides:
+    - exp_name=der_val
+  smoke_overrides:
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=2
+    - trainer.total_frames=40
+    - trainer.log_every_n_steps=8
+    - algorithm.init_random_frames=8
+    - algorithm.batch_size=4
+    - algorithm.num_updates=1
+    - algorithm.replay_capacity=200
+    - algorithm.n_steps=3
+
+runs:
+  der_breakout:
+    experiment: rainbow/atari100k
+    overrides: [environment.task=Breakout]
+
+  der_hero:
+    experiment: rainbow/atari100k
+    overrides: [environment.task=Hero]

@@ -1,0 +1,28 @@
+# @package _global_
+# Rainbow (Hessel et al. 2018) with its standard (Dopamine-style)
+# hyperparameters from configs/algorithm/rainbow.yaml, on the Atari-100k
+# protocol: the "Rainbow" baseline the data-efficient papers compare against.
+# The data-efficient preset (DER) is experiment=rainbow/atari100k.
+# Run another game with: environment.task=Breakout
+defaults:
+  - override /algorithm: rainbow
+  - override /environment: atari100k
+  - override /evaluation: atari100k
+  - override /trainer: gpu
+  - override /logger: wandb
+  - _self_
+
+# Must not collide with a DER run (exp_name: der) on the same game.
+exp_name: rainbow
+
+environment:
+  task: Jamesbond
+
+algorithm:
+  # The standard 1M buffer never fills in a 100k-step run, so a 100k buffer
+  # holds exactly the same transitions without sizing CPU storage for 1M.
+  replay_capacity: 100_000
+
+trainer:
+  total_frames: 100_000
+  seed: 1

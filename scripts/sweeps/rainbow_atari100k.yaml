@@ -1,0 +1,45 @@
+# Standard Rainbow (Dopamine-style hyperparameters, experiment
+# rainbow/atari100k_standard) on the three test Atari-100k games
+# (Atari100k-3: Assault, Bank Heist, Road Runner; see the paper's
+# app:subsets), 5 seeds each, matching the BBF, DreamerV3 and PPO test sweeps.
+#
+# Each run goes out as its own insjob job, one GPU each, calling train.py
+# directly; `scripts/jobs.py --sweep <file>` prints each run's overrides:
+#
+#   job run -H ploen --gpu-ids 2 --wait -- uv run --frozen --no-sync \
+#     python src/train.py experiment=rainbow/atari100k_standard \
+#     trainer.total_frames=100000 exp_name=rainbow_test environment.task=Assault \
+#     trainer.seed=1 trainer.devices=[0] 'logger.0.tags=[insjob,test-atari100k]' \
+#     hydra.run.dir=/insjob-out/rainbow_assault-seed1
+#
+# With scripts/run_sweep.sh instead, keep test and val files in separate calls:
+# `jobs.py --print-tag` takes the first file's tag.
+
+common:
+  tag: test-atari100k
+  seeds: [1, 2, 3, 4, 5]
+  total_frames: 100_000
+  overrides:
+    - exp_name=rainbow_test
+  smoke_overrides:
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=2
+    - trainer.total_frames=40
+    - trainer.log_every_n_steps=8
+    - algorithm.init_random_frames=8
+    - algorithm.batch_size=4
+    - algorithm.num_updates=1
+    - algorithm.replay_capacity=200
+
+runs:
+  rainbow_assault:
+    experiment: rainbow/atari100k_standard
+    overrides: [environment.task=Assault]
+
+  rainbow_bank_heist:
+    experiment: rainbow/atari100k_standard
+    overrides: [environment.task=BankHeist]
+
+  rainbow_road_runner:
+    experiment: rainbow/atari100k_standard
+    overrides: [environment.task=RoadRunner]

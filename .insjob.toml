@@ -11,6 +11,13 @@ memory = "48g"   # stohl has 62 GB
 
 [env]
 UV_CACHE_DIR = "/datahome/{user}/.cache/uv"
+# Build the job's venv on the container's own disk, not in the code checkout on
+# /datahome. Cache and checkout are both on the /datahome NFS server, so uv's
+# cache -> venv copies (it cannot hardlink across the mounts) become NFS
+# server-side copies, which have hung indefinitely on ploen since its
+# 2026-11-16 reboot. Copying NFS -> local disk is plain read/write.
+# `uv run` reads the same variable, so the job command uses this venv.
+UV_PROJECT_ENVIRONMENT = "/tmp/venv"
 
 [mounts]
 # /datahome is mounted read-only in jobs; the uv cache must be writable.

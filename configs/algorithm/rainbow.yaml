@@ -7,6 +7,9 @@ obs_key: pixels
 
 # Optimisation
 lr: 1e-4
+# torch's default. DER (van Hasselt et al. 2019) and its reference code use
+# 1.5e-4; scripts/sweeps/der_bankheist_ablation.yaml measures the difference.
+adam_eps: 1e-8
 gamma: 0.99
 batch_size: 32
 max_grad_norm: 10.0
