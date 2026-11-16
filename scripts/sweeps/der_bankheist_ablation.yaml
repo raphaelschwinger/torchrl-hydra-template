@@ -1,0 +1,49 @@
+# Why is DER low on Bank Heist? Training-side ablation, 5 seeds per arm, against
+# the der_test Bank Heist runs of der_atari100k.yaml as the baseline.
+#
+# Under the FastRL evaluation protocol DER scores ~30 on Bank Heist against 51
+# in its paper (5 seeds) and 186 in the 100-seed Dopamine re-run of Agarwal et
+# al. (2021). Evaluation-side causes are ruled out: the random-action reset
+# never costs a Bank Heist life, and evaluating without policy noise changes
+# nothing. Both arms keep the evaluation protocol unchanged.
+#
+#   der_adameps   our port with Adam eps 1.5e-4, the value of the DER paper and
+#                 its reference code (Kaixhin/Rainbow); we otherwise run torch's 1e-8
+#   der_dopamine  additionally Dopamine's DER (labs/atari_100k/configs/DER.gin):
+#                 n-step 10 and its FullRainbowNetwork, i.e. the Nature CNN
+#                 encoder with a 512-unit hidden layer. Dopamine's extra
+#                 epsilon-greedy on top of noisy nets is not reproduced.
+#
+# One insjob job per run, as in rainbow_atari100k.yaml.
+
+common:
+  tag: der-bankheist-ablation
+  seeds: [1, 2, 3, 4, 5]
+  total_frames: 100_000
+  overrides:
+    - environment.task=BankHeist
+    - algorithm.adam_eps=1.5e-4
+  smoke_overrides:
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=2
+    - trainer.total_frames=40
+    - trainer.log_every_n_steps=8
+    - algorithm.init_random_frames=8
+    - algorithm.batch_size=4
+    - algorithm.num_updates=1
+    - algorithm.replay_capacity=200
+
+runs:
+  der_adameps_bank_heist:
+    experiment: rainbow/atari100k
+    overrides: [exp_name=der_adameps_test]
+    smoke_overrides: [algorithm.n_steps=3]
+
+  der_dopamine_bank_heist:
+    experiment: rainbow/atari100k
+    overrides:
+      - exp_name=der_dopamine_test
+      - algorithm.n_steps=10
+      - algorithm.encoder_type=dqn
+      - algorithm.hidden_dim=512
+    smoke_overrides: [algorithm.n_steps=3]

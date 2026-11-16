@@ -95,6 +95,7 @@ class RainbowAlgorithm(DQNAlgorithm):
         *,
         obs_key: str = "pixels",
         lr: float = 1e-4,
+        adam_eps: float = 1e-8,
         gamma: float = 0.99,
         batch_size: int = 32,
         max_grad_norm: float = 10.0,
@@ -157,6 +158,7 @@ class RainbowAlgorithm(DQNAlgorithm):
             num_updates=num_updates,
             hard_update_freq=hard_update_freq,
         )
+        self.adam_eps = adam_eps
         self.replay_capacity = replay_capacity
         self.encoder_type = encoder_type
         self.hidden_dim = hidden_dim
@@ -308,7 +310,7 @@ class RainbowAlgorithm(DQNAlgorithm):
         self.target_updater = HardUpdate(
             self.loss_module, value_network_update_interval=self.hard_update_freq
         )
-        self.optimizer = torch.optim.Adam(self.q_actor.parameters(), lr=self.lr)
+        self.optimizer = torch.optim.Adam(self.q_actor.parameters(), lr=self.lr, eps=self.adam_eps)
 
     # ------------------------------------------------------------------
     # Training
