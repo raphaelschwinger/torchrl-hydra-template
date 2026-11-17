@@ -2,7 +2,7 @@
 logger:
   - _target_: src.callbacks.logger.WandBLogger
     project: torchrl-hydra-template
-    entity: null                # set via env var WANDB_ENTITY or CLI override
+    entity: LatentLab                # set via env var WANDB_ENTITY or CLI override
     name: ${run_name}           # override `run_name` in train.yaml or an experiment
     tags: []
     # "online" | "offline" | "disabled". Reads WANDB_MODE so the standard env

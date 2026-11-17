@@ -21,9 +21,23 @@ runs:
     label: "DreamerV3"
     experiment: dreamer/atari100k_notweaks
     total_frames: 100_000
-    overrides: []
+    # Match `dreamer_ablation_baseline` (scripts/sweeps/dreamer_optimisations_ablation.yaml
+    # at cdc8a0b): every runtime tweak off and replay capacity = run length.
+    # `atari100k_notweaks` alone leaves the other perf flags on and max_size=5e6.
+    # (perf.channels_last does not exist on this branch; it is implicitly off.)
+    overrides:
+      - trainer.num_envs=1
+      - algorithm.dreamer_config.compile=false
+      - algorithm.dreamer_config.perf.amp=off
+      - algorithm.dreamer_config.perf.static_pad=false
+      - algorithm.dreamer_config.perf.dedup_value=false
+      - algorithm.dreamer_config.perf.cudnn_benchmark=false
+      - algorithm.dreamer_config.perf.tf32=false
+      - algorithm.dreamer_config.perf.foreach_laprop=false
+      - algorithm.buffer_config.pin_memory=false
+      - algorithm.buffer_config.max_size=100000
 
+# The logger is chosen by task.py from the root config's `wandb:` switch.
 common_overrides:
-  - logger=tensorboard
   - checkpoint.enabled=false
   - trainer.log_every_n_steps=1000

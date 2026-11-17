@@ -38,12 +38,14 @@ envs = [
     "stable-baselines3>=2.9",
     "envpool>=1.2.5; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version >= '3.11'",
 ]
+# jax>=0.7 (and the MJX stack on top of it) needs Python >= 3.11; without the
+# guard the universal lock cannot resolve for the project's >=3.10 floor.
 envsjax = [
-    "jax[cuda12]>=0.7; sys_platform == 'linux'",
-    "jax>=0.7; sys_platform != 'linux'",
+    "jax[cuda12]>=0.7; sys_platform == 'linux' and python_version >= '3.11'",
+    "jax>=0.7; sys_platform != 'linux' and python_version >= '3.11'",
     "mujoco>=3.2",
-    "mujoco-mjx>=3.11",
-    "playground>=0.2",
+    "mujoco-mjx>=3.11; python_version >= '3.11'",
+    "playground>=0.2; python_version >= '3.11'",
 ]
 studies = [
     "pyarrow>=14.0.0",

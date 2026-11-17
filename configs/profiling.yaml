@@ -21,6 +21,13 @@ rss_limit_gib: 128
 sync_cuda: true
 overhead_run: true
 
+# W&B as in scripts/run_measured_sweep.sh: each cell logs *offline* (no network
+# I/O inside the measurement) and is uploaded with `wandb sync` after its clock
+# has stopped. false = tensorboard only. Smoke runs (quick=true) log offline but
+# are never synced, so they do not litter the project.
+wandb: true
+wandb_sync: true
+
 quick: false
 quick_total_frames: 3000
 quick_overrides:

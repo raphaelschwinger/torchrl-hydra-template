@@ -9,6 +9,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import shutil
+import subprocess
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -129,11 +132,69 @@ def _command(spec: CellSpec, cfg: DictConfig, run_dir: Path) -> list[str]:
         f"+profiling.output={profile_json}",
         f"hydra.run.dir={run_dir}",
     ]
+    command += _logger_overrides(spec, cfg, run_dir)
     command += _plain_list(cfg.get("common_overrides"))
     command += list(spec.overrides)
     if cfg.quick:
         command += _plain_list(cfg.get("quick_overrides"))
     return command
+
+
+def _gpu_tag(physical_index: int) -> str:
+    """Card name as a W&B tag ("NVIDIA GeForce RTX 5090" -> "RTX5090"), as
+    run_measured_sweep.sh does, so a timing is traceable to its hardware."""
+    try:
+        name = subprocess.run(
+            ["nvidia-smi", f"--id={physical_index}", "--query-gpu=name",
+             "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.splitlines()[0]
+    except (OSError, subprocess.SubprocessError, IndexError):
+        return ""
+    name = re.sub(r"^(NVIDIA )?(GeForce )?", "", name.strip())
+    return re.sub(r"[^A-Za-z0-9_.-]", "", name)
+
+
+def _logger_overrides(spec: CellSpec, cfg: DictConfig, run_dir: Path) -> list[str]:
+    if not cfg.get("wandb", False):
+        return ["logger=tensorboard"]
+    tags = _plain_list(cfg.get("tags"))
+    tags.append("instrumented" if spec.profiled else "uninstrumented")
+    if cfg.quick:
+        tags.append("quick")
+    gpu = _gpu_tag(int(cfg.get("physical_device_index", cfg.device_index)))
+    if gpu:
+        tags.append(gpu)
+    suffix = "" if spec.profiled else "_plain"
+    return [
+        "logger=wandb",
+        "logger.0.mode=offline",
+        # Inside the cell directory, so _sync_wandb finds exactly this run.
+        f"logger.0.save_dir={run_dir}",
+        # Never adopt a stale run id from a reused directory.
+        "logger.0.run_id_file=null",
+        f"logger.0.tags=[{','.join(dict.fromkeys(tags))}]",
+        f"exp_name=profiling_{spec.algorithm}{suffix}",
+    ]
+
+
+def _sync_wandb(run_dir: Path, cfg: DictConfig) -> None:
+    """Upload this cell's offline W&B run. Called after the cell's subprocess
+    has exited, so the upload is never inside a measurement."""
+    if not (cfg.get("wandb", False) and cfg.get("wandb_sync", True)) or cfg.quick:
+        return
+    wandb_bin = shutil.which("wandb", path=str(Path(sys.executable).parent)) or shutil.which("wandb")
+    if wandb_bin is None:
+        log.warning("wandb CLI not found; offline runs left in %s", run_dir)
+        return
+    for run in sorted(run_dir.glob("wandb/offline-run-*")):
+        if any(run.glob("*.wandb.synced")):
+            continue
+        result = subprocess.run([wandb_bin, "sync", str(run)], capture_output=True, text=True)
+        if result.returncode != 0:
+            log.warning("wandb sync failed for %s: %s", run, result.stderr.strip()[-300:])
+        else:
+            log.info("         synced %s", run.name)
 
 
 def run_cell_subprocess(spec: CellSpec, cfg: DictConfig, log_dir: Path) -> dict[str, Any]:
@@ -146,6 +207,7 @@ def run_cell_subprocess(spec: CellSpec, cfg: DictConfig, log_dir: Path) -> dict[
         rss_limit_gib=cfg.get("rss_limit_gib", None),
         gpu_index=int(cfg.get("physical_device_index", cfg.device_index)),
     )
+    _sync_wandb(run_dir, cfg)
 
     profile: dict[str, Any] = {}
     status, error = outcome["status"], outcome["error"]
