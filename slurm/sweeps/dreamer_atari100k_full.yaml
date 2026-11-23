@@ -1,0 +1,148 @@
+# DreamerV3 on the full 26-game Atari-100k suite, 2 seeds each, in the same
+# fast ("combined") setting as scripts/sweeps/dreamer_atari100k.yaml, without
+# the periodic evaluation curve. One Slurm job per (game, seed):
+#
+#   slurm/submit.sh --sweep slurm/sweeps/dreamer_atari100k_full.yaml
+
+common:
+  tag: full-atari100k
+  seeds: [1, 2]
+  total_frames: 100_000
+  overrides:
+    # No periodic eval curve: only the final 100-episode evaluation (the
+    # headline number) runs, which saves ~10 x 10 eval episodes per run.
+    - evaluation.every_n_steps=0
+    - exp_name=dreamer_full
+    - trainer.num_envs=1
+    - trainer.log_every_n_steps=1000
+    - checkpoint.enabled=false
+    - algorithm.world_model_video_log_every=0
+    - algorithm.agent_video_log_every=0
+    # The combined setting, now also the algorithm default; restated so the
+    # launched command is self-describing and survives a default change.
+    - algorithm.dreamer_config.compile=max-autotune
+    - algorithm.dreamer_config.perf.amp=bf16
+    - algorithm.dreamer_config.perf.cudnn_benchmark=true
+    - algorithm.dreamer_config.perf.tf32=true
+    - algorithm.dreamer_config.perf.channels_last=true
+    - algorithm.buffer_config.pin_memory=true
+  smoke_overrides:
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=2
+    - trainer.total_frames=20
+    - trainer.log_every_n_steps=10
+    - model.deter=64
+    - model.hidden=64
+    - model.discrete=8
+    - model.depth=8
+    - model.units=64
+    - algorithm.buffer_config.batch_size=16
+    - algorithm.buffer_config.batch_length=8
+    - algorithm.buffer_config.max_size=500
+    # compile off for smoke
+    - algorithm.dreamer_config.imag_horizon=3
+
+runs:
+  dreamer_alien:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Alien]
+
+  dreamer_amidar:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Amidar]
+
+  dreamer_assault:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Assault]
+
+  dreamer_asterix:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Asterix]
+
+  dreamer_bank_heist:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=BankHeist]
+
+  dreamer_battle_zone:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=BattleZone]
+
+  dreamer_boxing:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Boxing]
+
+  dreamer_breakout:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Breakout]
+
+  dreamer_chopper_command:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=ChopperCommand]
+
+  dreamer_crazy_climber:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=CrazyClimber]
+
+  dreamer_demon_attack:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=DemonAttack]
+
+  dreamer_freeway:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Freeway]
+
+  dreamer_frostbite:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Frostbite]
+
+  dreamer_gopher:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Gopher]
+
+  dreamer_hero:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Hero]
+
+  dreamer_jamesbond:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Jamesbond]
+
+  dreamer_kangaroo:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Kangaroo]
+
+  dreamer_krull:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Krull]
+
+  dreamer_kung_fu_master:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=KungFuMaster]
+
+  dreamer_ms_pacman:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=MsPacman]
+
+  dreamer_pong:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Pong]
+
+  dreamer_private_eye:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=PrivateEye]
+
+  dreamer_qbert:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Qbert]
+
+  dreamer_road_runner:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=RoadRunner]
+
+  dreamer_seaquest:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=Seaquest]
+
+  dreamer_up_n_down:
+    experiment: dreamer/atari100k
+    overrides: [environment.task=UpNDown]

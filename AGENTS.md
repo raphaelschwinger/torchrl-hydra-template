@@ -702,6 +702,11 @@ python scripts/update_algo_results.py              # refresh algo README benchma
 # Every run is tagged with the pinned card's name (e.g. RTX5090) automatically.
 GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/dreamer_optimisations_ablation.yaml
 
+# slurm/submit.sh: the same sweep format, one preemptible Slurm job per
+# (run, seed) on the vcai cluster (see slurm/README.md). Venv and compile
+# caches live per node in /scratch/node-cache/$UID.
+slurm/submit.sh --dry-run                     # full Atari-100k, BBF + DreamerV3, 104 jobs
+
 # Comparison figures + rliable, via openrlbenchmark's own rlops CLI.
 # First run builds an isolated .venv-openrlbenchmark; output in logs/analysis/.
 # Plotted on charts/eval_episodic_return so every algorithm in a figure shows

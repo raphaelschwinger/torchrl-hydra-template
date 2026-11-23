@@ -1,0 +1,144 @@
+# BBF on the full 26-game Atari-100k suite, 2 seeds each, in the same
+# fast ("combined") setting as scripts/sweeps/bbf_atari100k.yaml, without
+# the periodic evaluation curve. One Slurm job per (game, seed):
+#
+#   slurm/submit.sh --sweep slurm/sweeps/bbf_atari100k_full.yaml
+
+common:
+  tag: full-atari100k
+  seeds: [1, 2]
+  total_frames: 100_000
+  overrides:
+    # No periodic eval curve: only the final 100-episode evaluation (the
+    # headline number) runs, which saves ~10 x 10 eval episodes per run.
+    - evaluation.every_n_steps=0
+    - exp_name=bbf_full
+    - trainer.num_envs=1
+    - trainer.log_every_n_steps=1000
+    # The combined setting, now also the algorithm default; restated so the
+    # launched command is self-describing and survives a default change.
+    - algorithm.amp=true
+    - algorithm.storage_device=cuda
+    - algorithm.cudnn_benchmark=true
+    - algorithm.tf32=true
+  smoke_overrides:
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=2
+    - trainer.total_frames=40
+    - trainer.log_every_n_steps=8
+    - algorithm.min_replay_history=8
+    - algorithm.batch_size=2
+    - algorithm.replay_ratio=1
+    - algorithm.replay_capacity=200
+    - algorithm.max_update_horizon=3
+    - algorithm.min_update_horizon=1
+    - algorithm.spr_depth=2
+    - algorithm.width_scale=1
+    - algorithm.hidden_dim=64
+    - algorithm.reset_interval=12
+    - algorithm.eps_annealing_frames=8
+
+runs:
+  bbf_alien:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Alien]
+
+  bbf_amidar:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Amidar]
+
+  bbf_assault:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Assault]
+
+  bbf_asterix:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Asterix]
+
+  bbf_bank_heist:
+    experiment: bbf/atari100k
+    overrides: [environment.task=BankHeist]
+
+  bbf_battle_zone:
+    experiment: bbf/atari100k
+    overrides: [environment.task=BattleZone]
+
+  bbf_boxing:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Boxing]
+
+  bbf_breakout:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Breakout]
+
+  bbf_chopper_command:
+    experiment: bbf/atari100k
+    overrides: [environment.task=ChopperCommand]
+
+  bbf_crazy_climber:
+    experiment: bbf/atari100k
+    overrides: [environment.task=CrazyClimber]
+
+  bbf_demon_attack:
+    experiment: bbf/atari100k
+    overrides: [environment.task=DemonAttack]
+
+  bbf_freeway:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Freeway]
+
+  bbf_frostbite:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Frostbite]
+
+  bbf_gopher:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Gopher]
+
+  bbf_hero:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Hero]
+
+  bbf_jamesbond:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Jamesbond]
+
+  bbf_kangaroo:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Kangaroo]
+
+  bbf_krull:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Krull]
+
+  bbf_kung_fu_master:
+    experiment: bbf/atari100k
+    overrides: [environment.task=KungFuMaster]
+
+  bbf_ms_pacman:
+    experiment: bbf/atari100k
+    overrides: [environment.task=MsPacman]
+
+  bbf_pong:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Pong]
+
+  bbf_private_eye:
+    experiment: bbf/atari100k
+    overrides: [environment.task=PrivateEye]
+
+  bbf_qbert:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Qbert]
+
+  bbf_road_runner:
+    experiment: bbf/atari100k
+    overrides: [environment.task=RoadRunner]
+
+  bbf_seaquest:
+    experiment: bbf/atari100k
+    overrides: [environment.task=Seaquest]
+
+  bbf_up_n_down:
+    experiment: bbf/atari100k
+    overrides: [environment.task=UpNDown]
