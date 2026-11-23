@@ -59,7 +59,8 @@ python src/train.py "$@" \
   "trainer.devices=[0]" \
   "logger.0.tags=[${TAGS},restart${RESTART}]" \
   "hydra.run.dir=$RUN_DIR" \
-  "paths.output_dir=$RUN_DIR"
+  "paths.output_dir=$RUN_DIR" \
+  "paths.log_dir=$RUN_DIR/logs"
 set +x
 
 touch "$SWEEP_DIR/done/$CELL.done"

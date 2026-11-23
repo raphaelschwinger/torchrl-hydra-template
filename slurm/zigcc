@@ -1,0 +1,19 @@
+#!/bin/bash
+# C compiler for Triton's launcher stubs (torch.compile) on nodes without gcc:
+# zig cc, with `-l:FILE` (unsupported by zig's lld) resolved to a full path via the
+# -L dirs. Set up by slurm/env.sh (ZIG_BIN, CC).
+ZIG="${ZIG_BIN:?ZIG_BIN not set}"
+dirs=() args=()
+for a in "$@"; do [[ $a == -L* ]] && dirs+=("${a#-L}"); done
+for a in "$@"; do
+  if [[ $a == -l:* ]]; then
+    f="${a#-l:}" hit=""
+    for d in "${dirs[@]}" /lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu /usr/lib64; do
+      [[ -e "$d/$f" ]] && { hit="$d/$f"; break; }
+    done
+    args+=("${hit:-$a}")
+  else
+    args+=("$a")
+  fi
+done
+exec "$ZIG" cc "${args[@]}"

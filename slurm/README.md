@@ -17,6 +17,10 @@ slurm/submit.sh --sweep slurm/sweeps/bbf_atari100k_full.yaml --gres gpu:b200:1
   cell each. `submit.sh` skips cells with a `done/` marker or with a job of the
   same name (`<name>-s<N>`) already in `squeue`, so re-running it tops up
   failed or missing cells.
+- **Job limit.** The `scavenger` QOS allows 50 submitted jobs per user (an
+  interactive session counts too), so 104 jobs go in batches. Re-run
+  `slurm/submit.sh` to top up. It stops at the limit and the rest go in on the
+  next call.
 - **GPU.** `--gres=gpu:rtx_pro_6000:1` by default. Name a type: the untyped
   `gpu:1` can land on a MIG slice. Full GPUs: `rtx_pro_6000` (athena, iris,
   nereus), `b200` (apollo, hephaestus, poseidon).
@@ -37,6 +41,7 @@ downloads per job. `env.sh` keeps everything on the node-local persistent cache
 | `uv-cache/`, `uv-python/` | uv wheel cache and managed interpreters |
 | `venvs/<sha256(uv.lock + .python-version)[:12]>/` | deps-only venv shared by all jobs on the node with that lock; `.ok` stamp marks a complete build |
 | `inductor/`, `triton/` | `torch.compile` caches: only the first Dreamer job per node pays the cold max-autotune compile |
+| `tools/ziglang-0.14.1/` | C compiler for Triton's launcher stubs; the nodes have no gcc. `slurm/zigcc` wraps `zig cc` and is set as `CC` |
 
 The first job on a node builds the venv under `flock`. Concurrent jobs wait on
 the lock, and later jobs reuse the venv in seconds. The cache and the venvs sit

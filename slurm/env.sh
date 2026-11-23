@@ -70,4 +70,25 @@ export PYTHONUNBUFFERED=1
 export TORCHINDUCTOR_CACHE_DIR="$NODE_CACHE/inductor"
 export TRITON_CACHE_DIR="$NODE_CACHE/triton"
 
+# Triton compiles a small C launcher per kernel and needs a C compiler, which the
+# compute nodes lack. A pinned zig toolchain (pip wheel, self-contained clang)
+# lives next to the venvs; slurm/zigcc adapts Triton's link line to it. It only
+# builds the launcher stub, not the kernels, so results are unaffected.
+if ! command -v gcc >/dev/null && ! command -v cc >/dev/null; then
+  ZIG_VERSION=0.14.1
+  ZIG_DIR="$NODE_CACHE/tools/ziglang-$ZIG_VERSION"
+  mkdir -p "$NODE_CACHE/tools"
+  (
+    flock -x 9
+    if [[ ! -f "$ZIG_DIR.ok" ]]; then
+      echo "env.sh: installing ziglang==$ZIG_VERSION into $ZIG_DIR"
+      rm -rf "$ZIG_DIR"
+      "$UV" pip install -q --target "$ZIG_DIR" "ziglang==$ZIG_VERSION"
+      touch "$ZIG_DIR.ok"
+    fi
+  ) 9>"$ZIG_DIR.lock"
+  export ZIG_BIN="$ZIG_DIR/ziglang/zig"
+  export CC="$PWD/slurm/zigcc"
+fi
+
 set +u

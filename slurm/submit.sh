@@ -86,8 +86,14 @@ while IFS=$'\t' read -r name seed overrides; do
   if ((DRY_RUN)); then
     printf '%q ' "${cmd[@]}"; echo
   else
-    id="$("${cmd[@]}")"
-    echo "SUBMIT $job -> $id"
+    if ! out="$("${cmd[@]}" 2>&1)"; then
+      if grep -q QOSMaxSubmitJobPerUserLimit <<< "$out"; then
+        echo "STOP  per-user submit limit reached at $job; re-run later to top up"
+        break
+      fi
+      echo "$out" >&2; exit 1
+    fi
+    echo "SUBMIT $job -> $out"
   fi
   submitted=$((submitted + 1))
 done < <("$PYTHON" scripts/jobs.py "${SWEEP_ARGS[@]}" \
