@@ -1,0 +1,222 @@
+# Per-tweak runtime ablation for BRO (UTD 10) on DMC100k, the counterpart of
+# bbf_/dreamer_optimisations_ablation.yaml. BASELINE IS EVERYTHING OFF (the
+# published code path); each row switches one knob on. Pure-runtime rows on
+# finger-turn_easy; baseline, amp and combined rows also on quadruped-walk (the
+# DMC100k validation pair). 3 seeds each, so every timing has a spread.
+#
+# MEASURED SWEEP: wall-clock, run serially on one idle GPU:
+#   GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/bro_optimisations_ablation.yaml
+common:
+  tag: bro-opt
+  seeds:
+  - 1
+  - 2
+  - 3
+  total_frames: 50000
+  overrides:
+  - trainer.num_envs=1
+  - trainer.log_every_n_steps=1000
+  - checkpoint.enabled=false
+  smoke_overrides:
+  - trainer.total_frames=300
+  - evaluation.every_n_steps=0
+  - evaluation.final_num_episodes=1
+  - trainer.log_every_n_steps=50
+  - algorithm.init_random_frames=100
+runs:
+  bro_baseline_finger-turn_easy:
+    label: Baseline (published BRO, UTD 10)
+    axis: ''
+    semantics_preserving: true
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_baseline
+    - environment.task=finger-turn_easy
+    - algorithm.compile=false
+    - algorithm.compile_scope=update
+    - algorithm.amp=false
+    - algorithm.tf32=false
+    - algorithm.fused_optim=false
+    - algorithm.buffer_device=cpu
+  bro_baseline_quadruped-walk:
+    label: Baseline (published BRO, UTD 10)
+    axis: ''
+    semantics_preserving: true
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_baseline
+    - environment.task=quadruped-walk
+    - algorithm.compile=false
+    - algorithm.compile_scope=update
+    - algorithm.amp=false
+    - algorithm.tf32=false
+    - algorithm.fused_optim=false
+    - algorithm.buffer_device=cpu
+  bro_compile_finger-turn_easy:
+    label: torch.compile (default mode, per update)
+    axis: network
+    semantics_preserving: true
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_compile
+    - environment.task=finger-turn_easy
+    - algorithm.compile=true
+    - algorithm.compile_scope=update
+    - algorithm.amp=false
+    - algorithm.tf32=false
+    - algorithm.fused_optim=false
+    - algorithm.buffer_device=cpu
+  bro_cudagraphs_finger-turn_easy:
+    label: torch.compile reduce-overhead (CUDA graph per update)
+    axis: network
+    semantics_preserving: true
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_cudagraphs
+    - environment.task=finger-turn_easy
+    - algorithm.compile=reduce-overhead
+    - algorithm.compile_scope=update
+    - algorithm.amp=false
+    - algorithm.tf32=false
+    - algorithm.fused_optim=false
+    - algorithm.buffer_device=cpu
+  bro_cudagraphs_step_finger-turn_easy:
+    label: CUDA graph per agent step (all 10 updates)
+    axis: network
+    semantics_preserving: true
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_cudagraphs_step
+    - environment.task=finger-turn_easy
+    - algorithm.compile=reduce-overhead
+    - algorithm.compile_scope=step
+    - algorithm.amp=false
+    - algorithm.tf32=false
+    - algorithm.fused_optim=false
+    - algorithm.buffer_device=cpu
+  bro_amp_finger-turn_easy:
+    label: Mixed precision (bf16)
+    axis: network
+    semantics_preserving: false
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_amp
+    - environment.task=finger-turn_easy
+    - algorithm.compile=false
+    - algorithm.compile_scope=update
+    - algorithm.amp=true
+    - algorithm.tf32=false
+    - algorithm.fused_optim=false
+    - algorithm.buffer_device=cpu
+  bro_amp_quadruped-walk:
+    label: Mixed precision (bf16)
+    axis: network
+    semantics_preserving: false
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_amp
+    - environment.task=quadruped-walk
+    - algorithm.compile=false
+    - algorithm.compile_scope=update
+    - algorithm.amp=true
+    - algorithm.tf32=false
+    - algorithm.fused_optim=false
+    - algorithm.buffer_device=cpu
+  bro_tf32_finger-turn_easy:
+    label: TF32 matmuls
+    axis: network
+    semantics_preserving: true
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_tf32
+    - environment.task=finger-turn_easy
+    - algorithm.compile=false
+    - algorithm.compile_scope=update
+    - algorithm.amp=false
+    - algorithm.tf32=true
+    - algorithm.fused_optim=false
+    - algorithm.buffer_device=cpu
+  bro_fused_optim_finger-turn_easy:
+    label: Fused AdamW
+    axis: network
+    semantics_preserving: true
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_fused_optim
+    - environment.task=finger-turn_easy
+    - algorithm.compile=false
+    - algorithm.compile_scope=update
+    - algorithm.amp=false
+    - algorithm.tf32=false
+    - algorithm.fused_optim=true
+    - algorithm.buffer_device=cpu
+  bro_gpu_replay_finger-turn_easy:
+    label: GPU-resident replay
+    axis: data
+    semantics_preserving: true
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_gpu_replay
+    - environment.task=finger-turn_easy
+    - algorithm.compile=false
+    - algorithm.compile_scope=update
+    - algorithm.amp=false
+    - algorithm.tf32=false
+    - algorithm.fused_optim=false
+    - algorithm.buffer_device=cuda
+  bro_combined_finger-turn_easy:
+    label: Combined (CUDA graph per step, TF32, fused AdamW, GPU replay)
+    axis: combined
+    semantics_preserving: true
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_combined
+    - environment.task=finger-turn_easy
+    - algorithm.compile=reduce-overhead
+    - algorithm.compile_scope=step
+    - algorithm.amp=false
+    - algorithm.tf32=true
+    - algorithm.fused_optim=true
+    - algorithm.buffer_device=cuda
+  bro_combined_quadruped-walk:
+    label: Combined (CUDA graph per step, TF32, fused AdamW, GPU replay)
+    axis: combined
+    semantics_preserving: true
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_combined
+    - environment.task=quadruped-walk
+    - algorithm.compile=reduce-overhead
+    - algorithm.compile_scope=step
+    - algorithm.amp=false
+    - algorithm.tf32=true
+    - algorithm.fused_optim=true
+    - algorithm.buffer_device=cuda
+  bro_combined_amp_finger-turn_easy:
+    label: Combined + bf16
+    axis: combined
+    semantics_preserving: false
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_combined_amp
+    - environment.task=finger-turn_easy
+    - algorithm.compile=reduce-overhead
+    - algorithm.compile_scope=step
+    - algorithm.amp=true
+    - algorithm.tf32=true
+    - algorithm.fused_optim=true
+    - algorithm.buffer_device=cuda
+  bro_combined_amp_quadruped-walk:
+    label: Combined + bf16
+    axis: combined
+    semantics_preserving: false
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_runtime_combined_amp
+    - environment.task=quadruped-walk
+    - algorithm.compile=reduce-overhead
+    - algorithm.compile_scope=step
+    - algorithm.amp=true
+    - algorithm.tf32=true
+    - algorithm.fused_optim=true
+    - algorithm.buffer_device=cuda

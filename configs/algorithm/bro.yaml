@@ -1,0 +1,62 @@
+# BRO (Nauman et al. 2024). Mirrors the keyword defaults of
+# src.algorithms.bro.BROAlgorithm, which reproduce the official
+# github.com/naumix/BiggerRegularizedOptimistic configuration
+# (train_parallel.py + configs/bro_default.py): replay ratio 10, batch 128,
+# BroNet critic (width 512, 2 residual blocks) with 100 quantiles, BroNet
+# actors (width 256, 1 block), optimistic exploration, full resets.
+#
+# Like TD-MPC2, the networks are built in setup() from scalar knobs (the
+# optimistic actor consumes the conservative actor's mean and a reset restores
+# all of them at once), so there are no `_partial_` factories here.
+_target_: src.algorithms.bro.BROAlgorithm
+
+obs_key: observation
+
+# --- Architecture ---
+critic_hidden_dim: 512
+critic_depth: 2
+actor_hidden_dim: 256
+actor_depth: 1
+log_std_min: -10.0
+log_std_max: 2.0
+distributional: true
+n_quantiles: 100
+
+# --- Optimisation (AdamW for networks, Adam(b1=0.5) for the duals) ---
+actor_lr: 3e-4
+critic_lr: 3e-4
+temp_lr: 3e-4
+adj_lr: 3e-5
+weight_decay: 1e-4
+discount: 0.99
+tau: 0.005
+batch_size: 128
+
+# --- Entropy / optimism ---
+init_temperature: 1.0
+target_entropy: null   # -> -action_dim / 2
+init_optimism: 1.0
+init_regularizer: 0.25
+pessimism: 0.0
+kl_target: 0.05
+std_multiplier: 0.75
+
+# --- Resets, in agent steps. null -> the official list
+# [15001, 50001, 250001, ...], truncated to the first entry at num_updates=2.
+reset_steps: null
+
+# --- Replay ---
+buffer_size: 1_000_000
+buffer_device: cpu
+
+# --- Data collection / learning schedule ---
+frames_per_batch: 1
+init_random_frames: 2_500
+num_updates: 10   # replay ratio (UTD)
+
+# --- Runtime knobs (runtime ablation; all off = the published code path) ---
+compile: false      # torch.compile on _update: true = default mode, or a mode string (reduce-overhead, ...)
+amp: false          # autocast(bfloat16) around forward passes and losses (changes numerics)
+tf32: false         # TF32 for float32 matmuls
+fused_optim: false  # fused AdamW/Adam kernels
+compile_scope: update   # what compile wraps: one gradient step, or all num_updates of an agent step ("step")
