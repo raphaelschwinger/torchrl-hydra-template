@@ -26,7 +26,7 @@ environment:
     - _target_: torchrl.envs.transforms.FrameSkipTransform
       frame_skip: 2
     - _target_: torchrl.envs.transforms.CatTensors
-      in_keys: [position, velocity]
+      in_keys: null   # all dm_control observation keys
       out_key: observation
     - _target_: torchrl.envs.transforms.DoubleToFloat
     - _target_: torchrl.envs.transforms.InitTracker

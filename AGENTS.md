@@ -19,6 +19,7 @@ Implemented experiments:
 | PPO       | DMC cheetah-run | `experiment=ppo/dmc`         |
 | PPO       | ALE/Jamesbond-v5 (Atari-100k) | `experiment=ppo/ale` |
 | TD-MPC2   | dmc cheetah-run | `experiment=tdmpc2/dmc`      |
+| BRO       | dmc cheetah-run (DMC100k) | `experiment=bro/dmc`  |
 | DreamerV3 | ALE/Jamesbond-v5<br>(Atari100k) | `experiment=dreamer/atari100k` |
 | DreamerV3 | DMC cheetah-run<br>(proprio) | `experiment=dreamer/dmc` |
 | DER (Rainbow) | ALE/Jamesbond-v5<br>(Atari100k) | `experiment=rainbow/atari100k` |
@@ -117,7 +118,7 @@ with `configs/algorithm/dreamer.yaml`.
    nested configs become real callables. Plain `OmegaConf.to_container` + `**kwargs`
    would pass dicts instead of partials.
 
-   *Exception (TD-MPC2 precedent):* when subnetworks are architecturally coupled
+   *Exception (TD-MPC2 precedent, also BRO):* when subnetworks are architecturally coupled
    (shared latent dims, checkpoint-compatibility pins parameter names), factories
    add failure modes without research payoff. Then architecture knobs are plain
    scalar kwargs and the model/buffer are built inside `setup()` — document the
@@ -369,15 +370,16 @@ transforms:
   - _target_: torchrl.envs.transforms.FrameSkipTransform  # action repeat 2
     frame_skip: 2
   - _target_: torchrl.envs.transforms.CatTensors          # flatten dict obs -> "observation"
-    in_keys: [position, velocity]
+    in_keys: null   # all dm_control observation keys
     out_key: observation
   # ... (DoubleToFloat, InitTracker, StepCounter, RewardSum)
 ```
 
 The factory in `src/environments/factory.py` supports **gymnasium** (`GymEnv`)
 and **dm_control** (`DMControlEnv`). dm_control observations are dicts; use
-`CatTensors` to flatten them into a single `observation` key (alphabetical
-`in_keys` order matches the upstream TD-MPC2 concatenation). For >1 `num_envs`,
+`CatTensors` with `in_keys: null` to flatten every observation key into a
+single `observation` vector (keys sorted alphabetically), so the one stack covers
+all 28 DMC tasks; a hard-coded key list crashes on finger, quadruped, walker, etc. For >1 `num_envs`,
 workers run on CPU (`ParallelEnv` with `mp_start_method="spawn"`).
 
 ## Evaluation

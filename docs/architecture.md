@@ -155,7 +155,7 @@ transforms:
   - _target_: torchrl.envs.transforms.FrameSkipTransform   # action repeat 2
     frame_skip: 2
   - _target_: torchrl.envs.transforms.CatTensors            # flatten obs dict
-    in_keys: [position, velocity]
+    in_keys: null   # all dm_control observation keys
     out_key: observation
   # ...
 ```

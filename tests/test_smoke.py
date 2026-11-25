@@ -183,6 +183,42 @@ def test_smoke_tdmpc2_cheetah_run():
     assert len(metrics) > 0
 
 
+def test_smoke_tdmpc2_finger_turn_hard():
+    """TD-MPC2 on a task whose obs dict is not just position/velocity."""
+    pytest.importorskip("dm_control")
+    cfg = load_experiment_cfg(
+        "tdmpc2/dmc", [*_tdmpc2_overrides(), "environment.task=finger-turn_hard"]
+    )
+    from src.train import _train
+
+    assert len(_train(cfg)) > 0
+
+
+def test_smoke_bro_quadruped_walk():
+    """BRO on dm_control (quantile critic, optimistic actor, a reset mid-run)."""
+    pytest.importorskip("dm_control")
+    cfg = load_experiment_cfg(
+        "bro/dmc",
+        [
+            *BASE_OVERRIDES,
+            "environment.task=quadruped-walk",
+            "trainer.total_frames=60",
+            "trainer.log_every_n_steps=20",
+            "algorithm.init_random_frames=20",
+            "algorithm.num_updates=2",
+            "algorithm.batch_size=8",
+            "algorithm.critic_hidden_dim=32",
+            "algorithm.actor_hidden_dim=16",
+            "algorithm.n_quantiles=5",
+            "algorithm.reset_steps=[40]",
+        ],
+    )
+    from src.train import _train
+
+    metrics = _train(cfg)
+    assert metrics["train/num_resets"] == 1.0
+
+
 def _a2c_overrides() -> list[str]:
     # 600 frames in 120-frame rollouts: 5 collections, 6 mini-batches each
     # (mini_batch_size=20). On-policy: no replay buffer, no warm-up.

@@ -1,0 +1,134 @@
+# Port verification on DMC100k (state obs; 100k env steps = 50k agent steps
+# at action repeat 2): TD-MPC2 and BRO (UTD 10) at their PUBLISHED settings on
+# six tasks across six domains, 3 seeds each. Compared per task against the
+# reference per-seed scores at 100k env steps in the FastRL paper repo
+# (data/external/dmc/scores_per_seed.csv: TD-MPC2 by its authors, BRO UTD10 by
+# the SimbaV2 authors). The validation pair (finger-turn_easy, quadruped-walk)
+# and test subset are kept out except quadruped-walk, which is a validation task
+# and so safe to look at.
+#
+#   slurm/submit.sh --sweep slurm/sweeps/dmc100k_verify.yaml --gres gpu:b200_2g.45gb:1
+#   slurm/submit.sh --sweep slurm/sweeps/dmc100k_verify.yaml --smoke --only tdmpc2_cheetah-run,bro_cheetah-run --seeds 1
+
+common:
+  tag: dmc100k-verify
+  seeds: [1, 2, 3]
+  total_frames: 50_000
+  overrides:
+    - trainer.num_envs=1
+    - trainer.log_every_n_steps=1000
+    - checkpoint.save_every_n_steps=0
+  smoke_overrides:
+    - trainer.total_frames=300
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=1
+    - trainer.log_every_n_steps=50
+
+runs:
+  tdmpc2_cheetah-run:
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_verify
+      - environment.task=cheetah-run
+    smoke_overrides:
+      - algorithm.init_random_frames=100
+      - algorithm.pretrain_updates=5
+      - algorithm.num_updates=2
+      - algorithm.compile=false
+  bro_cheetah-run:
+    experiment: bro/dmc
+    overrides:
+      - exp_name=bro_verify
+      - environment.task=cheetah-run
+    smoke_overrides:
+      - algorithm.init_random_frames=100
+
+  tdmpc2_walker-walk:
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_verify
+      - environment.task=walker-walk
+    smoke_overrides:
+      - algorithm.init_random_frames=100
+      - algorithm.pretrain_updates=5
+      - algorithm.num_updates=2
+      - algorithm.compile=false
+  bro_walker-walk:
+    experiment: bro/dmc
+    overrides:
+      - exp_name=bro_verify
+      - environment.task=walker-walk
+    smoke_overrides:
+      - algorithm.init_random_frames=100
+
+  tdmpc2_finger-spin:
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_verify
+      - environment.task=finger-spin
+    smoke_overrides:
+      - algorithm.init_random_frames=100
+      - algorithm.pretrain_updates=5
+      - algorithm.num_updates=2
+      - algorithm.compile=false
+  bro_finger-spin:
+    experiment: bro/dmc
+    overrides:
+      - exp_name=bro_verify
+      - environment.task=finger-spin
+    smoke_overrides:
+      - algorithm.init_random_frames=100
+
+  tdmpc2_reacher-easy:
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_verify
+      - environment.task=reacher-easy
+    smoke_overrides:
+      - algorithm.init_random_frames=100
+      - algorithm.pretrain_updates=5
+      - algorithm.num_updates=2
+      - algorithm.compile=false
+  bro_reacher-easy:
+    experiment: bro/dmc
+    overrides:
+      - exp_name=bro_verify
+      - environment.task=reacher-easy
+    smoke_overrides:
+      - algorithm.init_random_frames=100
+
+  tdmpc2_quadruped-walk:
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_verify
+      - environment.task=quadruped-walk
+    smoke_overrides:
+      - algorithm.init_random_frames=100
+      - algorithm.pretrain_updates=5
+      - algorithm.num_updates=2
+      - algorithm.compile=false
+  bro_quadruped-walk:
+    experiment: bro/dmc
+    overrides:
+      - exp_name=bro_verify
+      - environment.task=quadruped-walk
+    smoke_overrides:
+      - algorithm.init_random_frames=100
+
+  tdmpc2_cartpole-swingup:
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_verify
+      - environment.task=cartpole-swingup
+    smoke_overrides:
+      - algorithm.init_random_frames=100
+      - algorithm.pretrain_updates=5
+      - algorithm.num_updates=2
+      - algorithm.compile=false
+  bro_cartpole-swingup:
+    experiment: bro/dmc
+    overrides:
+      - exp_name=bro_verify
+      - environment.task=cartpole-swingup
+    smoke_overrides:
+      - algorithm.init_random_frames=100

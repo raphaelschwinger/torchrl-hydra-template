@@ -1,0 +1,27 @@
+# @package _global_
+# BRO on DMC100k (state obs, single GPU): 100k environment steps = 50k agent
+# steps at action repeat 2, the FastRL DMC protocol. The reference curves are
+# the SimbaV2 authors' BRO reruns (results/baseline/bro_utd{2,10}.csv), indexed
+# by environment step.
+# Run another task with: environment.task=walker-walk
+# UTD 2: algorithm.num_updates=2 (resets drop to the first one automatically).
+defaults:
+  - override /algorithm: bro
+  - override /environment: dmc
+  - override /evaluation: dmc
+  - override /trainer: gpu
+  - override /logger: wandb
+  - _self_
+
+environment:
+  task: cheetah-run
+
+trainer:
+  seed: 1
+  num_envs: 1
+  total_frames: 50_000   # agent steps; x action_repeat 2 = 100k env steps
+
+checkpoint:
+  enabled: true
+  save_every_n_steps: 0
+  save_last: true

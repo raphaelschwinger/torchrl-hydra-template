@@ -60,7 +60,7 @@ Derived rules:
    `global_step` is a real data column.
 
 Currently DQN (gym, ALE), DDPG (gym), A2C (gym), PPO (DMC, ALE),
-TD-MPC2 (DMC), Rainbow/DER (Atari-100k), BBF (Atari-100k) and DreamerV3 +
+TD-MPC2 (DMC), BRO (DMC), Rainbow/DER (Atari-100k), BBF (Atari-100k) and DreamerV3 +
 variants (Atari-100k) are implemented; other algorithms will follow. Shared, algorithm-agnostic
 building blocks (e.g. orthogonal-init actor-critic factories, and reusable code
 adapted from external repos with source-attribution headers) live in
