@@ -24,12 +24,14 @@ Pseudocode (per agent step, after ``init_random_frames`` random steps):
 """
 from __future__ import annotations
 
+import contextlib
 import copy
 from typing import Callable
 
 import torch
 import torch.nn as nn
 from tensordict import TensorDict
+from torch.func import functional_call
 from tensordict.nn import TensorDictModule
 from torchrl.data import LazyTensorStorage, ReplayBuffer
 from torchrl.data.replay_buffers import RandomSampler
@@ -139,6 +141,18 @@ class BROAlgorithm(BaseAlgorithm):
         frames_per_batch: int = 1,
         init_random_frames: int = 2_500,
         num_updates: int = 10,  # replay ratio: gradient steps per agent step
+        # --- Runtime knobs (the runtime ablation; all off = the published code
+        # path, modulo PyTorch vs JAX). None of them changes the update
+        # equations; `amp` changes their numerics.
+        compile: bool | str = False,  # torch.compile _update: True = default mode, or a mode string
+        amp: bool = False,  # autocast(bfloat16) around forward passes and losses
+        tf32: bool = False,  # TF32 for float32 matmuls
+        fused_optim: bool = False,  # fused (single-kernel) AdamW/Adam steps
+        # What `compile` wraps: "update" = one gradient step; "step" = all
+        # num_updates steps of an agent step in one graph (like the official
+        # jax.lax.fori_loop), so "reduce-overhead" replays one CUDA graph per
+        # agent step instead of num_updates.
+        compile_scope: str = "update",
     ) -> None:
         super().__init__(device)
         self.obs_key = obs_key
@@ -161,6 +175,10 @@ class BROAlgorithm(BaseAlgorithm):
         self.frames_per_batch = frames_per_batch
         self.init_random_frames = init_random_frames
         self.num_updates = num_updates
+        self.compile, self.amp, self.tf32, self.fused_optim = compile, amp, tf32, fused_optim
+        if compile_scope not in ("update", "step"):
+            raise ValueError(f"compile_scope must be 'update' or 'step', got {compile_scope!r}")
+        self.compile_scope = compile_scope
         self._collected_frames = 0
         self._num_resets = 0
 
@@ -176,6 +194,9 @@ class BROAlgorithm(BaseAlgorithm):
         if self.target_entropy is None:
             self.target_entropy = -self.action_dim / 2
 
+        on_cuda = self.device is not None and torch.device(self.device).type == "cuda"
+        if self.tf32 and on_cuda:
+            torch.set_float32_matmul_precision("high")
         self.nets = _BROModules(obs_dim, self.action_dim, self).to(self.device)
         # A reset restores exactly the initial weights, like the official
         # `init_models(self.seeds)` with the same PRNG keys.
@@ -199,16 +220,29 @@ class BROAlgorithm(BaseAlgorithm):
             sampler=RandomSampler(),
             batch_size=self.batch_size * self.num_updates,
         )
+        self._updates_fn = self._updates
+        if self.compile:
+            mode = None if self.compile is True else str(self.compile)
+            if self.compile_scope == "step":
+                self._updates_fn = torch.compile(self._updates, mode=mode)
+            else:
+                self._update = torch.compile(self._update, mode=mode)
 
     def _setup_optimizers(self) -> None:
         n = self.nets
         wd = self.weight_decay
-        self.actor_optim = torch.optim.AdamW(n.actor.parameters(), lr=self.actor_lr, weight_decay=wd, eps=1e-8)
-        self.actor_o_optim = torch.optim.AdamW(n.actor_o.parameters(), lr=self.actor_lr, weight_decay=wd, eps=1e-8)
-        self.critic_optim = torch.optim.AdamW(n.critic.parameters(), lr=self.critic_lr, weight_decay=wd, eps=1e-8)
-        self.temp_optim = torch.optim.Adam(n.log_alpha.parameters(), lr=self.temp_lr, betas=(0.5, 0.999))
+        on_cuda = self.device is not None and torch.device(self.device).type == "cuda"
+        # CUDA-graph capture (compile="reduce-overhead") needs device-side step
+        # counters; `fused` is one kernel per optimiser step instead of a loop.
+        kw = {"capturable": bool(self.compile) and on_cuda}
+        if self.fused_optim and on_cuda:
+            kw["fused"] = True
+        self.actor_optim = torch.optim.AdamW(n.actor.parameters(), lr=self.actor_lr, weight_decay=wd, eps=1e-8, **kw)
+        self.actor_o_optim = torch.optim.AdamW(n.actor_o.parameters(), lr=self.actor_lr, weight_decay=wd, eps=1e-8, **kw)
+        self.critic_optim = torch.optim.AdamW(n.critic.parameters(), lr=self.critic_lr, weight_decay=wd, eps=1e-8, **kw)
+        self.temp_optim = torch.optim.Adam(n.log_alpha.parameters(), lr=self.temp_lr, betas=(0.5, 0.999), **kw)
         self.adj_optim = torch.optim.Adam(
-            [*n.optimism.parameters(), *n.regularizer.parameters()], lr=self.adj_lr, betas=(0.5, 0.999)
+            [*n.optimism.parameters(), *n.regularizer.parameters()], lr=self.adj_lr, betas=(0.5, 0.999), **kw
         )
         self._optims = (self.actor_optim, self.actor_o_optim, self.critic_optim, self.temp_optim, self.adj_optim)
 
@@ -242,11 +276,25 @@ class BROAlgorithm(BaseAlgorithm):
         # minibatch (official `sample_parallel_multibatch`): one buffer draw of
         # num_updates * batch_size, split.
         for _ in range(batch.numel()):
-            for mb in self._sample().split(self.batch_size):
-                self._last_info = self._update(mb)
+            sample = self._sample()
+            if self.compile and self.compile_scope == "step":
+                torch.compiler.cudagraph_mark_step_begin()
+            info = self._updates_fn(sample)
+            self._last_info = {k: v.clone() for k, v in info.items()}
         # Diagnostics stay on the device until a logging boundary
         # (`pop_train_metrics`), so the update loop never forces a host sync.
         return {"train/num_resets": float(self._num_resets)}
+
+    def _updates(self, sample: TensorDict) -> dict[str, torch.Tensor]:
+        """``num_updates`` gradient steps, one per ``batch_size`` slice of ``sample``."""
+        info = {}
+        for mb in sample.split(self.batch_size):
+            if self.compile and self.compile_scope == "update":
+                torch.compiler.cudagraph_mark_step_begin()
+            info = self._update(mb)
+            if self.compile and self.compile_scope == "update":
+                info = {k: v.clone() for k, v in info.items()}
+        return info
 
     def _sample(self) -> TensorDict:
         """One uniform draw of ``num_updates * batch_size`` transitions, on the device."""
@@ -274,13 +322,19 @@ class BROAlgorithm(BaseAlgorithm):
         info.update(self._update_duals(info["entropy"], info["kl"]))
         return info
 
+    def _autocast(self):
+        """bf16 autocast for forward passes and losses, or a no-op."""
+        if self.amp and self.device is not None and torch.device(self.device).type == "cuda":
+            return torch.autocast("cuda", dtype=torch.bfloat16)
+        return contextlib.nullcontext()
+
     def _q_mix(self, q1, q2, coef):
         """mean(Q1, Q2) + coef * |Q1 - Q2| / 2 (coef < 0 is a lower bound)."""
         return (q1 + q2) / 2 + coef * (q1 - q2).abs() / 2
 
     def _update_critic(self, obs, action, reward, mask, next_obs) -> dict[str, torch.Tensor]:
         n = self.nets
-        with torch.no_grad():
+        with torch.no_grad(), self._autocast():
             alpha = n.log_alpha()
             mean, std = n.actor(next_obs)
             next_action, next_log_prob = tanh_normal_sample(mean, std)
@@ -291,7 +345,9 @@ class BROAlgorithm(BaseAlgorithm):
             else:
                 target = reward + self.discount * mask * (next_q - alpha * next_log_prob)
 
-        q1, q2 = n.critic(obs, action)
+        with self._autocast():
+            q1, q2 = n.critic(obs, action)
+        q1, q2, target = q1.float(), q2.float(), target.float()  # losses in fp32
         if self.distributional:
             loss = self._quantile_huber(target - q1[..., None]) + self._quantile_huber(target - q2[..., None])
         else:
@@ -315,19 +371,20 @@ class BROAlgorithm(BaseAlgorithm):
         )
 
     def _critic_frozen(self, obs, action):
-        """Critic forward whose gradient flows to the action only."""
+        """Critic forward whose gradient flows to the action only (detached weights)."""
         critic = self.nets.critic
-        critic.requires_grad_(False)
-        try:
-            return critic(obs, action)
-        finally:
-            critic.requires_grad_(True)
+        params = {k: v.detach() for k, v in critic.named_parameters()}
+        return functional_call(critic, params, (obs, action))
 
     def _update_actor(self, obs) -> dict[str, torch.Tensor]:
         n = self.nets
-        mean, std = n.actor(obs)
+        with self._autocast():
+            mean, std = n.actor(obs)
+        mean, std = mean.float(), std.float()
         action, log_prob = tanh_normal_sample(mean, std)
-        q = self._q_mix(*self._critic_frozen(obs, action), -self.pessimism)
+        with self._autocast():
+            q1, q2 = self._critic_frozen(obs, action)
+        q = self._q_mix(q1.float(), q2.float(), -self.pessimism)
         if self.distributional:
             q = q.mean(-1)
         loss = (log_prob * n.log_alpha().detach() - q).mean()
@@ -338,11 +395,16 @@ class BROAlgorithm(BaseAlgorithm):
 
     def _update_actor_optimistic(self, obs) -> dict[str, torch.Tensor]:
         n = self.nets
-        with torch.no_grad():  # the freshly updated conservative actor
+        with torch.no_grad(), self._autocast():  # the freshly updated conservative actor
             mean_c, std_c = n.actor(obs)
-        mean_o, std_o = n.actor_o(obs, mean_c, std_c, self.std_multiplier)
+        mean_c, std_c = mean_c.float(), std_c.float()
+        with self._autocast():
+            mean_o, std_o = n.actor_o(obs, mean_c, std_c, self.std_multiplier)
+        mean_o, std_o = mean_o.float(), std_o.float()
         action, _ = tanh_normal_sample(mean_o, std_o)
-        q_ub = self._q_mix(*self._critic_frozen(obs, action), n.optimism().detach())
+        with self._autocast():
+            q1, q2 = self._critic_frozen(obs, action)
+        q_ub = self._q_mix(q1.float(), q2.float(), n.optimism().detach())
         if self.distributional:
             q_ub = q_ub.mean(-1)
         s = std_o / self.std_multiplier
