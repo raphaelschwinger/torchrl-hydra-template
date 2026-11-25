@@ -242,12 +242,15 @@ class BROAlgorithm(BaseAlgorithm):
         # minibatch (official `sample_parallel_multibatch`): one buffer draw of
         # num_updates * batch_size, split.
         for _ in range(batch.numel()):
-            sample = self.replay_buffer.sample().to(self.device, non_blocking=True)
-            for mb in sample.split(self.batch_size):
+            for mb in self._sample().split(self.batch_size):
                 self._last_info = self._update(mb)
         # Diagnostics stay on the device until a logging boundary
         # (`pop_train_metrics`), so the update loop never forces a host sync.
         return {"train/num_resets": float(self._num_resets)}
+
+    def _sample(self) -> TensorDict:
+        """One uniform draw of ``num_updates * batch_size`` transitions, on the device."""
+        return self.replay_buffer.sample().to(self.device, non_blocking=True)
 
     def pop_train_metrics(self) -> dict[str, float]:
         """Last update's diagnostics (like the official logger), read at log time."""

@@ -1,0 +1,42 @@
+# Wall-clock profile of TD-MPC2 and BRO (UTD 10) at their PUBLISHED settings on
+# the DMC100k validation pair (finger-turn_easy, quadruped-walk), the DMC
+# counterpart of the BBF/DreamerV3 profile. Three seeds per cell, so every
+# phase share comes with a spread (mean +- CI) rather than one timing.
+#
+# MEASURED: submit on ONE full-GPU type only, so the timings are comparable:
+#   slurm/submit.sh --sweep slurm/sweeps/dmc100k_profile.yaml --gres gpu:rtx_pro_6000:1
+# Each run writes runs/<cell>/profile_phases.json (src/trainers/profiling.py).
+
+common:
+  tag: dmc100k-profile
+  seeds: [1, 2, 3]
+  total_frames: 50_000
+  overrides:
+    - trainer._target_=src.trainers.profiling.ProfilingStepTrainer
+    - +profiling.enabled=true
+    - trainer.num_envs=1
+    - trainer.log_every_n_steps=1000
+    - checkpoint.enabled=false
+  smoke_overrides:
+    - trainer.total_frames=300
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=1
+    - trainer.log_every_n_steps=50
+
+runs:
+  tdmpc2_finger-turn_easy:
+    experiment: tdmpc2/dmc
+    overrides: [exp_name=tdmpc2_profile, environment.task=finger-turn_easy]
+    smoke_overrides: [algorithm.init_random_frames=100, algorithm.pretrain_updates=5, algorithm.num_updates=2, algorithm.compile=false]
+  tdmpc2_quadruped-walk:
+    experiment: tdmpc2/dmc
+    overrides: [exp_name=tdmpc2_profile, environment.task=quadruped-walk]
+    smoke_overrides: [algorithm.init_random_frames=100, algorithm.pretrain_updates=5, algorithm.num_updates=2, algorithm.compile=false]
+  bro_finger-turn_easy:
+    experiment: bro/dmc
+    overrides: [exp_name=bro_profile, environment.task=finger-turn_easy]
+    smoke_overrides: [algorithm.init_random_frames=100]
+  bro_quadruped-walk:
+    experiment: bro/dmc
+    overrides: [exp_name=bro_profile, environment.task=quadruped-walk]
+    smoke_overrides: [algorithm.init_random_frames=100]
