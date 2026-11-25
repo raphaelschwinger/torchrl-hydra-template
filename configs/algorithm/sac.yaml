@@ -1,0 +1,49 @@
+# Soft Actor-Critic. Mirrors the keyword defaults of
+# src.algorithms.sac.SACAlgorithm: jaxrl's SAC (github.com/ikostrikov/jaxrl),
+# the code BRO builds on. MLP 256x2 actor and critics, Adam 3e-4, batch 256,
+# tau 0.005, initial temperature 1, target entropy -|A|/2, clipped double-Q.
+#
+# The networks are built in setup() from scalar knobs (TD-MPC2 precedent):
+# BRO subclasses SAC and swaps the trunks, so a trunk factory here would be
+# a second way to change the same thing.
+_target_: src.algorithms.sac.SACAlgorithm
+
+obs_key: observation
+
+# --- Architecture ---
+critic_hidden_dim: 256
+critic_depth: 2
+actor_hidden_dim: 256
+actor_depth: 2
+log_std_min: -10.0
+log_std_max: 2.0
+
+# --- Optimisation ---
+actor_lr: 3e-4
+critic_lr: 3e-4
+temp_lr: 3e-4
+weight_decay: 0.0   # > 0 switches the networks to AdamW
+discount: 0.99
+tau: 0.005
+batch_size: 256
+pessimism: 1.0      # 1 = min(Q1, Q2)
+
+# --- Entropy ---
+init_temperature: 1.0
+target_entropy: null   # -> -action_dim / 2
+
+# --- Replay ---
+buffer_size: 1_000_000
+buffer_device: cpu
+
+# --- Data collection / learning schedule ---
+frames_per_batch: 1
+init_random_frames: 5_000
+num_updates: 1   # replay ratio (UTD)
+
+# --- Runtime knobs (runtime ablation; all off = the reference code path) ---
+compile: false        # torch.compile: true = default mode, or a mode string (reduce-overhead, ...)
+compile_scope: update # "update" = one gradient step; "step" = all num_updates of an agent step in one graph
+amp: false            # autocast(bfloat16) around forward passes (changes numerics)
+tf32: false           # TF32 for float32 matmuls
+fused_optim: false    # fused Adam/AdamW kernels
