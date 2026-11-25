@@ -110,6 +110,7 @@ class TDMPC2Algorithm(BaseAlgorithm):
         pretrain_updates: int | None = None,  # None -> init_random_frames (upstream)
         # --- Misc -------------------------------------------------------------
         compile: bool = False,  # torch.compile(mode="reduce-overhead"); CUDA only
+        tf32: bool = False,  # TF32 for float32 matmuls (runtime ablation)
     ) -> None:
         super().__init__(device)
         self.obs_key = obs_key
@@ -138,6 +139,7 @@ class TDMPC2Algorithm(BaseAlgorithm):
         self.num_updates = num_updates
         self.pretrain_updates = pretrain_updates
         self.compile = compile
+        self.tf32 = tf32
         self._collected_frames = 0
         self._pretrained = False
 
@@ -150,6 +152,8 @@ class TDMPC2Algorithm(BaseAlgorithm):
         obs_dim = int(proof_env.observation_spec[self.obs_key].shape[-1])
         action_dim = int(proof_env.action_spec.shape[-1])
         del proof_env
+        if self.tf32 and self.device is not None and torch.device(self.device).type == "cuda":
+            torch.set_float32_matmul_precision("high")
 
         self.model = WorldModel(
             obs_dim, action_dim,

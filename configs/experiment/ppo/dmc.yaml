@@ -45,7 +45,7 @@ environment:
   # No FrameSkipTransform: PPO runs at the native 1000-step episode length.
   transforms:
     - _target_: torchrl.envs.CatTensors
-      in_keys: [position, velocity]
+      in_keys: null   # all dm_control observation keys
       out_key: observation
       del_keys: true
     - _target_: torchrl.envs.DoubleToFloat

@@ -183,6 +183,17 @@ def test_smoke_tdmpc2_cheetah_run():
     assert len(metrics) > 0
 
 
+def test_smoke_tdmpc2_finger_turn_hard():
+    """TD-MPC2 on a task whose obs dict is not just position/velocity."""
+    pytest.importorskip("dm_control")
+    cfg = load_experiment_cfg(
+        "tdmpc2/dmc", [*_tdmpc2_overrides(), "environment.task=finger-turn_hard"]
+    )
+    from src.train import _train
+
+    assert len(_train(cfg)) > 0
+
+
 def _a2c_overrides() -> list[str]:
     # 600 frames in 120-frame rollouts: 5 collections, 6 mini-batches each
     # (mini_batch_size=20). On-policy: no replay buffer, no warm-up.

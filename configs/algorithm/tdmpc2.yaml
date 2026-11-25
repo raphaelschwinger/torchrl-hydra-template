@@ -70,3 +70,4 @@ pretrain_updates: null
 
 # --- Misc ---
 compile: false
+tf32: false  # TF32 for float32 matmuls (runtime ablation)

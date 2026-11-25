@@ -157,3 +157,16 @@ Verified result with the official `cheetah-run-1.pt` (2023-06-03) through this p
 | [tdmpc2_cheetah-run_2026-08-03_16-09-04](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/nd3ojze5) | cheetah-run | `experiment=tdmpc2/dmc` | 1 | 1,000,000 | 899.7 | — |
 | [tdmpc2_cheetah-run_2026-08-03_16-57-43](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/b1wqk7c2) | cheetah-run | `experiment=tdmpc2/dmc` | 2 | 1,000,000 | 920.4 | — |
 | [tdmpc2_cheetah-run_2026-08-03_19-51-37](https://wandb.ai/LatentLab/torchrl-hydra-template/runs/gxaltszp) | cheetah-run | `experiment=tdmpc2/dmc` | 3 | 1,000,000 | 901.7 | — |
+
+## All 28 DMC tasks and DMC100k
+
+`environment: dmc` flattens **every** dm_control observation key
+(`CatTensors` with `in_keys: null`), so `environment.task=` reaches all 28
+proprioceptive tasks (finger, quadruped, walker, hopper, humanoid, dog, …), not
+only the `position`/`velocity` domains. For the DMC100k budget (100k env steps
+= 50k agent steps at action repeat 2) add `trainer.total_frames=50_000`.
+
+- `scripts/sweeps/tdmpc2_dmc100k_val.yaml`: port check on six tasks × 3 seeds
+  against TD-MPC2's own per-seed scores at 100k env steps.
+- `scripts/sweeps/tdmpc2_optimisations_ablation.yaml`: runtime ablation
+  (`compile`, `tf32`, `buffer_device`) on the validation pair, all-off baseline.

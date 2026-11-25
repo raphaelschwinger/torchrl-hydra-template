@@ -369,15 +369,16 @@ transforms:
   - _target_: torchrl.envs.transforms.FrameSkipTransform  # action repeat 2
     frame_skip: 2
   - _target_: torchrl.envs.transforms.CatTensors          # flatten dict obs -> "observation"
-    in_keys: [position, velocity]
+    in_keys: null   # all dm_control observation keys
     out_key: observation
   # ... (DoubleToFloat, InitTracker, StepCounter, RewardSum)
 ```
 
 The factory in `src/environments/factory.py` supports **gymnasium** (`GymEnv`)
 and **dm_control** (`DMControlEnv`). dm_control observations are dicts; use
-`CatTensors` to flatten them into a single `observation` key (alphabetical
-`in_keys` order matches the upstream TD-MPC2 concatenation). For >1 `num_envs`,
+`CatTensors` with `in_keys: null` to flatten every observation key into a
+single `observation` vector (keys sorted alphabetically), so the one stack covers
+all 28 DMC tasks; a hard-coded key list crashes on finger, quadruped, walker, etc. For >1 `num_envs`,
 workers run on CPU (`ParallelEnv` with `mp_start_method="spawn"`).
 
 ## Evaluation

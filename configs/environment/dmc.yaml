@@ -18,10 +18,13 @@ transforms:
   # (github.com/nicklashansen/tdmpc2, envs/dmcontrol.py).
   - _target_: torchrl.envs.transforms.FrameSkipTransform
     frame_skip: 2
-  # Flatten the dm_control obs dict (e.g. position: 8, velocity: 9) into a
-  # single "observation" vector (alphabetical order = upstream's dict order).
+  # Flatten every key of the dm_control obs dict into one "observation"
+  # vector. `in_keys: null` takes all observation keys, so one stack serves
+  # all 28 tasks (finger has touch/target_position/dist_to_target, quadruped
+  # egocentric_state/imu/..., walker orientations/height); keys are sorted
+  # alphabetically, which for cheetah (position, velocity) is upstream's order.
   - _target_: torchrl.envs.transforms.CatTensors
-    in_keys: [position, velocity]
+    in_keys: null
     out_key: observation
   - _target_: torchrl.envs.transforms.DoubleToFloat
   - _target_: torchrl.envs.transforms.InitTracker

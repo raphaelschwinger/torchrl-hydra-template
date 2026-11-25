@@ -1,0 +1,124 @@
+# Per-tweak runtime ablation for TD-MPC2 on DMC100k, the counterpart of
+# bbf_/dreamer_optimisations_ablation.yaml. BASELINE IS EVERYTHING OFF; each
+# row switches one knob on. Pure-runtime rows on finger-turn_easy; baseline and
+# combined also on quadruped-walk (the DMC100k validation pair). 3 seeds each,
+# so every timing has a spread.
+#
+# MEASURED SWEEP: wall-clock, run serially on one idle GPU:
+#   GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/tdmpc2_optimisations_ablation.yaml
+common:
+  tag: tdmpc2-opt
+  seeds:
+  - 1
+  - 2
+  - 3
+  total_frames: 50000
+  overrides:
+  - trainer.num_envs=1
+  - trainer.log_every_n_steps=1000
+  - checkpoint.enabled=false
+  smoke_overrides:
+  - trainer.total_frames=300
+  - evaluation.every_n_steps=0
+  - evaluation.final_num_episodes=1
+  - trainer.log_every_n_steps=50
+  - algorithm.init_random_frames=100
+runs:
+  tdmpc2_baseline_finger-turn_easy:
+    label: Baseline (TD-MPC2, compile off)
+    axis: ''
+    semantics_preserving: true
+    experiment: tdmpc2/dmc
+    overrides:
+    - exp_name=tdmpc2_runtime_baseline
+    - environment.task=finger-turn_easy
+    - algorithm.compile=false
+    - algorithm.tf32=false
+    - algorithm.buffer_device=cpu
+    smoke_overrides:
+    - algorithm.pretrain_updates=5
+    - algorithm.num_updates=2
+  tdmpc2_baseline_quadruped-walk:
+    label: Baseline (TD-MPC2, compile off)
+    axis: ''
+    semantics_preserving: true
+    experiment: tdmpc2/dmc
+    overrides:
+    - exp_name=tdmpc2_runtime_baseline
+    - environment.task=quadruped-walk
+    - algorithm.compile=false
+    - algorithm.tf32=false
+    - algorithm.buffer_device=cpu
+    smoke_overrides:
+    - algorithm.pretrain_updates=5
+    - algorithm.num_updates=2
+  tdmpc2_compile_finger-turn_easy:
+    label: torch.compile reduce-overhead (upstream GPU default)
+    axis: network
+    semantics_preserving: true
+    experiment: tdmpc2/dmc
+    overrides:
+    - exp_name=tdmpc2_runtime_compile
+    - environment.task=finger-turn_easy
+    - algorithm.compile=true
+    - algorithm.tf32=false
+    - algorithm.buffer_device=cpu
+    smoke_overrides:
+    - algorithm.pretrain_updates=5
+    - algorithm.num_updates=2
+  tdmpc2_tf32_finger-turn_easy:
+    label: TF32 matmuls
+    axis: network
+    semantics_preserving: true
+    experiment: tdmpc2/dmc
+    overrides:
+    - exp_name=tdmpc2_runtime_tf32
+    - environment.task=finger-turn_easy
+    - algorithm.compile=false
+    - algorithm.tf32=true
+    - algorithm.buffer_device=cpu
+    smoke_overrides:
+    - algorithm.pretrain_updates=5
+    - algorithm.num_updates=2
+  tdmpc2_gpu_replay_finger-turn_easy:
+    label: GPU-resident replay
+    axis: data
+    semantics_preserving: true
+    experiment: tdmpc2/dmc
+    overrides:
+    - exp_name=tdmpc2_runtime_gpu_replay
+    - environment.task=finger-turn_easy
+    - algorithm.compile=false
+    - algorithm.tf32=false
+    - algorithm.buffer_device=cuda
+    smoke_overrides:
+    - algorithm.pretrain_updates=5
+    - algorithm.num_updates=2
+  tdmpc2_combined_finger-turn_easy:
+    label: Combined (compile, TF32, GPU replay)
+    axis: combined
+    semantics_preserving: true
+    experiment: tdmpc2/dmc
+    overrides:
+    - exp_name=tdmpc2_runtime_combined
+    - environment.task=finger-turn_easy
+    - algorithm.compile=true
+    - algorithm.tf32=true
+    - algorithm.buffer_device=cuda
+    smoke_overrides:
+    - algorithm.pretrain_updates=5
+    - algorithm.num_updates=2
+  tdmpc2_combined_quadruped-walk:
+    label: Combined (compile, TF32, GPU replay)
+    axis: combined
+    semantics_preserving: true
+    experiment: tdmpc2/dmc
+    overrides:
+    - exp_name=tdmpc2_runtime_combined
+    - environment.task=quadruped-walk
+    - algorithm.compile=true
+    - algorithm.tf32=true
+    - algorithm.buffer_device=cuda
+    smoke_overrides:
+    - algorithm.pretrain_updates=5
+    - algorithm.num_updates=2
