@@ -19,6 +19,7 @@ Implemented experiments:
 | PPO       | DMC cheetah-run | `experiment=ppo/dmc`         |
 | PPO       | ALE/Jamesbond-v5 (Atari-100k) | `experiment=ppo/ale` |
 | SAC       | dmc cheetah-run (DMC100k) | `experiment=sac/dmc`  |
+| BRO       | dmc cheetah-run (DMC100k) | `experiment=bro/dmc`  |
 | TD-MPC2   | dmc cheetah-run | `experiment=tdmpc2/dmc`      |
 | DreamerV3 | ALE/Jamesbond-v5<br>(Atari100k) | `experiment=dreamer/atari100k` |
 | DreamerV3 | DMC cheetah-run<br>(proprio) | `experiment=dreamer/dmc` |
@@ -118,7 +119,7 @@ with `configs/algorithm/dreamer.yaml`.
    nested configs become real callables. Plain `OmegaConf.to_container` + `**kwargs`
    would pass dicts instead of partials.
 
-   *Exception (TD-MPC2 precedent):* when subnetworks are architecturally coupled
+   *Exception (TD-MPC2 precedent, also SAC/BRO):* when subnetworks are architecturally coupled
    (shared latent dims, checkpoint-compatibility pins parameter names), factories
    add failure modes without research payoff. Then architecture knobs are plain
    scalar kwargs and the model/buffer are built inside `setup()` — document the
