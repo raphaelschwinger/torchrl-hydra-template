@@ -277,6 +277,8 @@ class BaseTrainer(ABC):
             ``(returns, lengths)`` — one entry per episode.
         """
         env = self._get_eval_env()
+        if self.eval_cfg.get("sync_obs_norm", True):
+            _sync_obs_norm(self.train_env, env)
         seed = self.eval_cfg.get("seed", None)
         if seed is not None:
             # Reproducible without making every evaluation point identical.
@@ -377,3 +379,31 @@ class BaseTrainer(ABC):
         """Check if we crossed a ``log_every`` boundary this iteration."""
         prev = self._step - batch_frames
         return prev // log_every < self._step // log_every
+
+
+def _vecnorms(env) -> list:
+    """The VecNorm transforms of ``env``'s transform stack, in order."""
+    from torchrl.envs import VecNorm
+
+    transform = getattr(env, "transform", None)
+    if transform is None:
+        return []
+    return [t for t in transform.modules() if isinstance(t, VecNorm)]
+
+
+def _sync_obs_norm(train_env, eval_env) -> None:
+    """Copy the train env's VecNorm statistics into the eval env and freeze them.
+
+    Pairs the VecNorm transforms of the two stacks by position; does nothing
+    when the stacks differ (e.g. ``ale_eval`` drops VecNorm) or have none, or
+    while the train-side statistics are not initialised yet.
+    """
+    src, dst = _vecnorms(train_env), _vecnorms(eval_env)
+    if not src or len(src) != len(dst):
+        return
+    for s, d in zip(src, dst):
+        if getattr(s, "_td", None) is None:
+            return
+        d.load_state_dict(s.state_dict())
+        d.freeze()
+

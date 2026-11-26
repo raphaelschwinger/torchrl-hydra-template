@@ -17,6 +17,7 @@ Implemented experiments:
 | DDPG      | HalfCheetah-v4 | `experiment=ddpg/gym`         |
 | A2C       | HalfCheetah-v4 | `experiment=a2c/gym`          |
 | PPO       | DMC cheetah-run | `experiment=ppo/dmc`         |
+| PPO       | DMC cheetah-run (DMC100k) | `experiment=ppo/dmc100k` |
 | PPO       | ALE/Jamesbond-v5 (Atari-100k) | `experiment=ppo/ale` |
 | TD-MPC2   | dmc cheetah-run | `experiment=tdmpc2/dmc`      |
 | DreamerV3 | ALE/Jamesbond-v5<br>(Atari100k) | `experiment=dreamer/atari100k` |

@@ -26,6 +26,12 @@ policy: eval             # eval | explore
 canonical_source: eval   # which stream feeds charts/episodic_return
 ```
 
+`sync_obs_norm` (default `true`, set in `none.yaml`) copies the training env's
+`VecNorm` statistics into the eval env and freezes them before every
+evaluation, so a policy trained on normalised observations is measured with
+the statistics it was trained on (SB3's `sync_envs_normalization`). It only
+reads the training env, and it is a no-op when the eval stack has no `VecNorm`.
+
 Shipped protocols: `none` (training stream only), `gym`, `ale`, `atari100k`,
 `atari100k_native`, `dmc`. Any scalar is overridable — drop back to a single
 final number with `evaluation.every_n_steps=0`.

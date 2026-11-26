@@ -62,6 +62,7 @@ built from TorchRL components (`ClipPPOLoss`, `GAE`, `ProbabilisticActor`,
 | HPs (state / continuous) | [`configs/algorithm/ppo.yaml`](../../../configs/algorithm/ppo.yaml) |
 | Policy (pixels / Atari) | [`configs/algorithm/policy/nature_cnn_categorical.yaml`](../../../configs/algorithm/policy/nature_cnn_categorical.yaml) |
 | Experiment: DMC cheetah-run 1M | [`configs/experiment/ppo/dmc.yaml`](../../../configs/experiment/ppo/dmc.yaml) |
+| Experiment: DMC100k | [`configs/experiment/ppo/dmc100k.yaml`](../../../configs/experiment/ppo/dmc100k.yaml) |
 | Experiment: Atari-100k JamesBond | [`configs/experiment/ppo/ale.yaml`](../../../configs/experiment/ppo/ale.yaml) |
 
 ```shell
@@ -118,9 +119,65 @@ Core and continuous-action details from the
   would drift.
 - **Atari-100k tuning:** `num_epochs: 10` (cleanRL uses 4) for more sample reuse at the
   100k-step budget (~97 rollouts); everything else matches cleanRL's `ppo_atari.py`.
-- **Eval with fresh `VecNorm` stats:** running statistics are env state and are not
-  checkpointed, so evaluation environments start with cold normalization stats
-  (`ale_eval.yaml` drops `VecNorm` entirely).
+- **Eval `VecNorm` stats are synced from training:** running statistics are env state
+  and are not checkpointed, so the trainer copies the training env's statistics into
+  the eval env and freezes them before every evaluation (`evaluation.sync_obs_norm`).
+  `ale_eval.yaml` drops `VecNorm` entirely, so there it is a no-op.
+
+## DMC100k (shared DMC protocol)
+
+`experiment=ppo/dmc100k` runs PPO under the protocol of `sac/dmc`, `bro/dmc`
+and `tdmpc2/dmc`: 100k env steps = 50k agent steps at action repeat 2, eval
+every 10k agent steps on 10 episodes with the deterministic policy, and a
+separate 10-episode final eval as the score. The hyperparameters are cleanRL's,
+unchanged from `ppo/dmc` (tuned for 1M steps): at this budget a 2048-step
+rollout gives only ~24 PPO iterations.
+
+```shell
+./scripts/run_sweep.sh --sweep scripts/sweeps/ppo_dmc100k_val.yaml --gpus 0,1,2
+```
+
+### Results (2026-11-26, Lena, 3 seeds)
+
+Final eval return, mean (min–max). No paper reports PPO on DMC at 100k env
+steps. The closest published numbers are MR.Q's PPO baseline (Fujimoto et al.,
+2025, [arXiv:2501.16142](https://arxiv.org/abs/2501.16142), Table 5: Stable
+Baselines 3 defaults, action repeat 2, 10 seeds) at **500k agent steps = 1M env
+steps, 10x our budget**, so it is an upper reference, not a target.
+
+| Task | Ours, 100k env steps | MR.Q's PPO, 1M env steps |
+|---|---|---|
+| cheetah-run | 75 (69–81) | 269 [247, 295] |
+| walker-walk | 43 (36–49) | 283 [253, 312] |
+| finger-spin | 18 (3–48) | 459 [420, 497] |
+| reacher-easy | 636 (399–915) | 367 [188, 558] |
+| quadruped-walk | 208 (199–214) | 122 [103, 142] |
+| cartpole-swingup | 194 (148–257) | 776 [661, 853] |
+
+At 100k env steps PPO is far below the off-policy methods on the same protocol
+(SAC: cheetah-run 240, walker-walk 511, finger-spin 471), as expected for an
+on-policy method at this budget. reacher-easy and quadruped-walk sit above
+MR.Q's 1M-step numbers; with 3 seeds and SB3's different defaults, read that as
+noise and implementation spread, not as PPO improving with less data.
+
+**Deterministic vs stochastic policy.** After 24 iterations PPO's
+state-independent std is still near its initial value of 1, so the mean action
+is a much weaker policy than the sampled one on some tasks. finger-spin seed 1:
+the deterministic eval scores 48, the stochastic policy 101 in the same eval
+env, matching the training stream (100). The protocol reports the
+deterministic score, like the other DMC100k experiments.
+
+**Eval normalisation fix.** These runs use `evaluation.sync_obs_norm: true`
+(the new default): before each evaluation the trainer copies the training
+env's `VecNorm` statistics into the eval env and freezes them there (SB3's
+`sync_envs_normalization`). Before the fix the eval env normalised with its own
+cold statistics, and the stochastic policy scored 1.4 on finger-spin in the
+eval env against 100 on the training stream. The first sweep without the fix
+(`logs/sweeps/ppo-dmc100k-val.cold-vecnorm` on Lena) scored cheetah-run 102,
+walker-walk 55, finger-spin 2, reacher-easy 655, quadruped-walk 219,
+cartpole-swingup 224. Its numbers on other tasks were not uniformly lower,
+because cold statistics adapted to the deterministic policy's own state
+distribution, but they did not measure the trained agent.
 
 ## Experimental results
 

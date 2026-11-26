@@ -18,11 +18,12 @@ defaults:
 # Cost: ~1M extra env steps across this 1M-frame run. Lower the cadence if that
 # matters: `evaluation.every_n_steps=50_000`.
 #
-# Caveat: VecNorm running stats (below) are not checkpointed or shared, so the
-# eval env starts with fresh statistics. DMC observations are well-scaled and
-# the stats converge within the first episodes — measured at 1M steps on
-# cheetah-run, eval sits ~550 against a ~400 training stream, the expected
-# deterministic-policy gap rather than a normalisation artefact.
+# VecNorm running stats (below) are env state: they are not checkpointed, and
+# before each evaluation the trainer copies the training env's statistics into
+# the eval env and freezes them (`evaluation.sync_obs_norm`, default on). The
+# 1M-step results in the PPO README predate that sync and evaluated with the
+# eval env's own statistics; on finger-spin at 100k that cost the whole score
+# (see the README's DMC100k section).
 evaluation:
   summary_window: 100
 
@@ -34,8 +35,8 @@ environment:
   # PPO-specific observation handling, so it lives here rather than in the
   # shared dmc.yaml stack. VecNorm + ClipTransform implement the cleanRL /
   # "37 details" observation normalization + clipping tricks (values match the
-  # torchrl SOTA PPO reference). Caveat: VecNorm running stats are not
-  # checkpointed, so eval envs start with fresh statistics.
+  # torchrl SOTA PPO reference). VecNorm running stats are not
+  # checkpointed; evaluation syncs them from the training env.
   # The action ClipTransform mirrors gym's ClipAction: the policy's Normal is
   # unbounded and the stored action/log-prob stay unclipped, but the env
   # receives actions clipped to the [-1, 1] action spec.

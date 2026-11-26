@@ -23,6 +23,14 @@ final_num_episodes: 0
 # "explore" -> algorithm.get_explore_policy().
 policy: eval
 
+# Copy the training env's observation-normalisation statistics (torchrl
+# VecNorm) into the eval env before every evaluation, and freeze them there.
+# Measurement only: the train env's statistics are read, never written. This
+# is SB3's sync_envs_normalization; without it the eval env normalises with its
+# own cold statistics (PPO on DMC: finger-spin scored ~2 against ~100 on the
+# training stream). A no-op for env stacks without VecNorm.
+sync_obs_norm: true
+
 # Which stream feeds the canonical `charts/episodic_return`:
 #   "train" -> completed training episodes (CleanRL / openrlbenchmark convention)
 #   "eval"  -> evaluation rollouts

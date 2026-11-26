@@ -1,0 +1,59 @@
+# @package _global_
+# PPO on DMC100k (state obs): 100k environment steps = 50k agent steps at
+# action repeat 2, the shared DMC protocol of sac/dmc, bro/dmc and tdmpc2/dmc
+# (`environment: dmc` + `evaluation: dmc`: eval every 10k agent steps on 10
+# episodes, deterministic policy, separate 10-episode final eval = the score).
+#
+# Hyperparameters are cleanRL's ppo_continuous_action.py, unchanged from
+# ppo/dmc (1M frames, action repeat 1). They are tuned for 1M steps: at this
+# budget a 2048-step rollout gives only ~24 PPO iterations, so expect PPO well
+# below the off-policy methods. That is the point of the comparison, not a bug.
+# Run another task with: environment.task=walker-walk
+defaults:
+  - ppo/dmc
+  - override /trainer: gpu
+  - _self_
+
+# Distinct from ppo/dmc (1M steps, action repeat 1) for openrlbenchmark's
+# (exp_name, env_id) key.
+exp_name: ppo_dmc100k
+
+environment:
+  task: cheetah-run
+  action_repeat: 2
+  # ppo/dmc's stack with the shared dmc.yaml FrameSkipTransform(2) in front.
+  # A list override replaces the whole list, so the PPO transforms are
+  # repeated here; keep them in sync with ppo/dmc.
+  transforms:
+    - _target_: torchrl.envs.transforms.FrameSkipTransform
+      frame_skip: 2
+    - _target_: torchrl.envs.CatTensors
+      in_keys: null   # all dm_control observation keys
+      out_key: observation
+      del_keys: true
+    - _target_: torchrl.envs.DoubleToFloat
+    - _target_: torchrl.envs.VecNorm
+      in_keys: [observation]
+      decay: 0.99999
+      eps: 0.01
+    - _target_: torchrl.envs.ClipTransform
+      in_keys: [observation]
+      low: -10.0
+      high: 10.0
+    - _target_: torchrl.envs.ClipTransform
+      in_keys_inv: [action]
+      low: -1.0
+      high: 1.0
+    - _target_: torchrl.envs.InitTracker
+    - _target_: torchrl.envs.StepCounter
+    - _target_: torchrl.envs.RewardSum
+
+trainer:
+  seed: 1
+  num_envs: 1
+  total_frames: 50_000   # agent steps; x action_repeat 2 = 100k env steps
+
+checkpoint:
+  enabled: true
+  save_every_n_steps: 0
+  save_last: true
