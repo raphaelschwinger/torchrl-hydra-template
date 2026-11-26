@@ -38,7 +38,8 @@ actor → temperature) and exposes the points BRO changes: the trunk classes
 (`actor_trunk`, `critic_trunk`), `_build_networks`, `_optimizer_specs`,
 `_td_target` / `_critic_loss` / `_reduce_q` (quantile critic), `_update`
 (optimistic actor), `_before_updates` (resets) and `_make_explore_policy`.
-Networks are built in `setup()` from scalar kwargs (the TD-MPC2 precedent), so
+[TD3](../td3/README.md) subclasses SAC too and also uses `_make_eval_policy`
+(deterministic actor) and `_compile_update`. Networks are built in `setup()` from scalar kwargs (the TD-MPC2 precedent), so
 BRO's trunk swap does not need a second factory mechanism.
 
 Runtime knobs, all off by default and shared with BRO: `compile` (+

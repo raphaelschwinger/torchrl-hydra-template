@@ -56,4 +56,27 @@ DMC's action bounds are [−1, 1], so `max_action = 1`.
 `scripts/sweeps/td3_dmc100k_val.yaml`: the six DMC tasks of the SAC, BRO and
 TD-MPC2 port checks × 3 seeds at 100k env steps, final eval of 10 episodes.
 
-RESULTS_PLACEHOLDER
+### DMC100k port check (2026-11-26, Lena)
+
+Final eval return (10 episodes) at 100k env steps, 3 seeds, mean (min–max).
+No paper reports plain TD3 on DMC at 100k env steps, so the references are the
+nearest runs on the same budget: our SAC on the same protocol (same warm-up,
+same network size, `sac/README.md`) and TD7, TD3 plus SALE embeddings, LAP
+replay and checkpoints, as rerun at 100k env steps by the SimBa authors
+(5 seeds, `data/external/dmc/scores_per_seed.csv` in the FastRL paper repo).
+
+| Task | TD3 (ours) | SAC (ours) | TD7 (SimBa authors) |
+|---|---|---|---|
+| cheetah-run | 154 (140–175) | 240 (162–284) | 470 (414–493) |
+| walker-walk | 511 (483–538) | 511 (439–582) | 672 (536–890) |
+| finger-spin | 452 (386–568) | 471 (453–485) | 527 (0–904) |
+| reacher-easy | 808 (598–938) | 906 (785–971) | 587 (4–982) |
+| quadruped-walk | 167 (91–236) | 153 (120–208) | 143 (83–204) |
+| cartpole-swingup | 771 (626–875) | 848 (841–859) | 856 (827–875) |
+
+TD3 matches SAC on walker-walk, finger-spin and quadruped-walk, and is lower on
+cheetah-run, reacher-easy and cartpole-swingup, where SAC's entropy-driven
+exploration helps early. TD7 is ahead on the locomotion tasks, as its extra
+components are meant to be, and within the spread of the others elsewhere.
+Nothing here points to a porting bug, but without a direct TD3 reference this
+is a plausibility check, not a match to published numbers.
