@@ -71,3 +71,6 @@ pretrain_updates: null
 # --- Misc ---
 compile: false
 tf32: false  # TF32 for float32 matmuls (runtime ablation)
+amp: false          # autocast(bfloat16) around the update and planning (changes numerics)
+fused_optim: false  # fused Adam kernels
+pin_memory: false   # pinned staging + async host->device copy of sampled slices
