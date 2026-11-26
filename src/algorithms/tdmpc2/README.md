@@ -168,5 +168,24 @@ only the `position`/`velocity` domains. For the DMC100k budget (100k env steps
 
 - `scripts/sweeps/tdmpc2_dmc100k_val.yaml`: port check on six tasks × 3 seeds
   against TD-MPC2's own per-seed scores at 100k env steps.
-- `scripts/sweeps/tdmpc2_optimisations_ablation.yaml`: runtime ablation
-  (`compile`, `tf32`, `buffer_device`) on the validation pair, all-off baseline.
+- `scripts/sweeps/tdmpc2_optimisations_ablation.yaml`: runtime ablation on
+  finger-turn_easy, 15 rows × 5 seeds, all-off baseline (knobs `compile` with
+  mode strings, `tf32`, `amp`, `fused_optim`, `pin_memory`, `buffer_device`,
+  all off by default).
+
+### DMC100k port check (2026-11-25)
+
+Final eval return (10 episodes) at 100k env steps, published settings,
+3 seeds, against TD-MPC2's own 3 seeds (FastRL paper repo,
+`data/external/dmc/scores_per_seed.csv`):
+
+| Task | Ours: mean (min–max) | TD-MPC2 paper |
+|---|---|---|
+| cheetah-run | 576 (523–616) | 519 (454–614) |
+| walker-walk | 964 (953–972) | 962 (948–971) |
+| finger-spin | 915 (879–984) | 948 (920–986) |
+| reacher-easy | 918 (877–970) | 937 (860–978) |
+| quadruped-walk | 720 (360–904) | 487 (214–827) |
+| cartpole-swingup | 821 (799–843) | 839 (790–868) |
+
+Every task overlaps the published seed range.

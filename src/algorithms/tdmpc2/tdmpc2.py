@@ -41,6 +41,18 @@ from .policy import make_policy
 from .world_model import WorldModel, api_model_conversion
 
 
+def _autocast_bf16(fn):
+    """Run ``fn`` under CUDA bf16 autocast (losses with log_softmax stay fp32)."""
+    def wrapped(*args, **kwargs):
+        with torch.autocast("cuda", dtype=torch.bfloat16):
+            out = fn(*args, **kwargs)
+        # Actions leave the planner in fp32, whatever autocast computed inside.
+        if isinstance(out, torch.Tensor) and out.is_floating_point():
+            out = out.float()
+        return out
+    return wrapped
+
+
 class TDMPC2Algorithm(BaseAlgorithm):
     """TD-MPC2 with a latent world model, MPPI planning and a Q-ensemble.
 
@@ -109,8 +121,13 @@ class TDMPC2Algorithm(BaseAlgorithm):
         num_updates: int = 50,  # gradient updates per collector batch (utd=1.0)
         pretrain_updates: int | None = None,  # None -> init_random_frames (upstream)
         # --- Misc -------------------------------------------------------------
-        compile: bool = False,  # torch.compile(mode="reduce-overhead"); CUDA only
-        tf32: bool = False,  # TF32 for float32 matmuls (runtime ablation)
+        # --- Runtime knobs (the runtime ablation; none changes the update
+        # equations, `amp` changes their numerics) ---------------------------
+        compile: bool | str = False,  # True = torch.compile "reduce-overhead" (CUDA graphs); or a mode string
+        tf32: bool = False,  # TF32 for float32 matmuls
+        amp: bool = False,  # autocast(bfloat16) around the update and planning
+        fused_optim: bool = False,  # fused Adam kernels
+        pin_memory: bool = False,  # pinned staging + async host->device copy of sampled slices
     ) -> None:
         super().__init__(device)
         self.obs_key = obs_key
@@ -140,6 +157,7 @@ class TDMPC2Algorithm(BaseAlgorithm):
         self.pretrain_updates = pretrain_updates
         self.compile = compile
         self.tf32 = tf32
+        self.amp, self.fused_optim, self.pin_memory = amp, fused_optim, pin_memory
         self._collected_frames = 0
         self._pretrained = False
 
@@ -182,13 +200,22 @@ class TDMPC2Algorithm(BaseAlgorithm):
             self.model, self.planner, self.obs_key, mpc=self.mpc, eval_mode=True
         )
         self._setup_buffer()
+        if self.amp and self._on_cuda:
+            self._update = _autocast_bf16(self._update)
+            self.planner.plan = _autocast_bf16(self.planner.plan)
         if self.compile:
-            self._update = torch.compile(self._update, mode="reduce-overhead")
-            self.planner.plan = torch.compile(self.planner.plan, mode="reduce-overhead")
+            mode = "reduce-overhead" if self.compile is True else str(self.compile)
+            self._update = torch.compile(self._update, mode=mode)
+            self.planner.plan = torch.compile(self.planner.plan, mode=mode)
+
+    @property
+    def _on_cuda(self) -> bool:
+        return self.device is not None and torch.device(self.device).type == "cuda"
 
     def _setup_optimizers(self) -> None:
         """Grouped Adam over the model (scaled encoder lr) + separate policy Adam."""
-        capturable = self.device is not None and torch.device(self.device).type == "cuda"
+        capturable = self._on_cuda
+        fused = {"fused": True} if self.fused_optim and capturable else {}
         self.optim = torch.optim.Adam(
             [
                 {"params": self.model._encoder.parameters(), "lr": self.lr * self.enc_lr_scale},
@@ -198,9 +225,10 @@ class TDMPC2Algorithm(BaseAlgorithm):
             ],
             lr=self.lr,
             capturable=capturable,
+            **fused,
         )
         self.pi_optim = torch.optim.Adam(
-            self.model._pi.parameters(), lr=self.lr, eps=1e-5, capturable=capturable
+            self.model._pi.parameters(), lr=self.lr, eps=1e-5, capturable=capturable, **fused
         )
 
     def _setup_buffer(self) -> None:
@@ -270,7 +298,9 @@ class TDMPC2Algorithm(BaseAlgorithm):
     def _sample(self):
         """Sample [horizon+1, B] obs / [horizon, B] action, reward, terminated."""
         td = self.replay_buffer.sample()
-        td = td.view(self.batch_size, self.horizon).permute(1, 0).to(self.device)
+        if self.pin_memory and self._on_cuda and td.device.type == "cpu":
+            td = td.pin_memory()
+        td = td.view(self.batch_size, self.horizon).permute(1, 0).to(self.device, non_blocking=True)
         obs = torch.cat([td[self.obs_key], td["next", self.obs_key][-1:]], dim=0)
         action = td["action"]
         reward = td["next", "reward"]

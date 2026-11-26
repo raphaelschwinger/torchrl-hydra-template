@@ -52,3 +52,20 @@ steps, against the SAC reruns by the TD-MPC2, SimBa and SimbaV2 authors
 (`data/external/dmc/scores_per_seed.csv` in the FastRL paper repository).
 Those three SAC implementations differ in network size and warm-up, so their
 spread at 100k is the target range rather than one number.
+
+### DMC100k port check (2026-11-25)
+
+Final eval return (10 episodes) at 100k env steps, 3 seeds, mean (min–max),
+against the SAC reruns at 100k env steps:
+
+| Task | Ours | SimbaV2 authors | TD-MPC2 authors | SimBa authors |
+|---|---|---|---|---|
+| cheetah-run | 240 (162–284) | 178 (141–215) | 310 (237–362) | 329 (271–416) |
+| walker-walk | 511 (439–582) | 449 (366–532) | 708 (510–918) | 783 (605–959) |
+| finger-spin | 471 (453–485) | 475 (456–493) | 762 (744–774) | 614 (499–714) |
+| reacher-easy | 906 (785–971) | 931 (871–969) | 540 (68–813) | 882 (778–972) |
+| quadruped-walk | 153 (120–208) | 114 (30–171) | 55 (20–86) | 76 (16–189) |
+| cartpole-swingup | 848 (841–859) | 861 (855–864) | 835 (826–845) | 853 (840–865) |
+
+Ours tracks the SimbaV2 authors' jaxrl-style SAC on every task; the TD-MPC2
+and SimBa reruns use other networks and settings.
