@@ -71,3 +71,25 @@ DMC tasks, as rerun by the SimbaV2 authors
 Port check: `scripts/sweeps/bro_dmc100k_val.yaml`; runtime ablation:
 `scripts/sweeps/bro_optimisations_ablation.yaml` (knobs `compile`,
 `compile_scope`, `amp`, `tf32`, `fused_optim`, `buffer_device`; all off by default).
+
+### DMC100k port check (2026-11-25)
+
+Final eval return (10 episodes) at 100k env steps, 3 seeds, mean (min–max),
+against BRO UTD 10 as rerun by the SimbaV2 authors (5 seeds). cheetah-run ran
+the published code path; the other tasks the fast path
+(`compile: reduce-overhead`, `compile_scope: step`, same equations), which on
+cheetah-run gave the same scores (508, 514).
+
+| Task | Ours (action repeat 2) | Reference |
+|---|---|---|
+| cheetah-run | 571 (512–608) | 531 (429–639) |
+| walker-walk | 956 (941–965) | 963 (956–976) |
+| finger-spin | 861 (816–949) | 979 (972–986) |
+| reacher-easy | 871 (863–877) | 877 (688–976) |
+| quadruped-walk | 730 (603–943) | 810 (642–935) |
+| cartpole-swingup | 873 (865–879) | 872 (863–879) |
+
+finger-spin at **action repeat 1** (100k agent steps, as the official code
+runs DMC): 970 (940–988). The reference curves count environment steps at
+action repeat 1, i.e. twice our agent steps and updates; on fine-control tasks
+that shows, on the others it does not.
