@@ -19,9 +19,10 @@ Pseudocode (per agent step, after ``init_random_frames`` random steps):
 ``Q_lb = mean(Q1, Q2) - pessimism * |Q1 - Q2| / 2``: ``pessimism=1`` is the
 usual clipped double-Q ``min(Q1, Q2)``; BRO lowers it to 0.
 
-Extension points for subclasses (BRO): ``_build_networks``,
+Extension points for subclasses (BRO, TD3): ``_build_networks``,
 ``_optimizer_specs``, ``_td_target`` / ``_critic_loss`` / ``_reduce_q``,
-``_update``, ``_before_updates`` and ``_make_explore_policy``.
+``_update``, ``_before_updates``, ``_make_explore_policy`` / ``_make_eval_policy``
+and ``_compile_update``.
 """
 from __future__ import annotations
 
@@ -186,7 +187,7 @@ class SACAlgorithm(BaseAlgorithm):
             self._make_explore_policy(), in_keys=[self.obs_key], out_keys=["action"]
         )
         self._eval_policy = TensorDictModule(
-            SACPolicyModule(self.nets, eval_mode=True), in_keys=[self.obs_key], out_keys=["action"]
+            self._make_eval_policy(), in_keys=[self.obs_key], out_keys=["action"]
         )
         self._buffer_keys = (self.obs_key, "action", ("next", self.obs_key), ("next", "reward"), ("next", "terminated"))
         self.replay_buffer = ReplayBuffer(
@@ -200,13 +201,20 @@ class SACAlgorithm(BaseAlgorithm):
             if self.compile_scope == "step":
                 self._updates_fn = torch.compile(self._updates, mode=mode)
             else:
-                self._update = torch.compile(self._update, mode=mode)
+                self._compile_update(mode)
 
     def _build_networks(self, obs_dim: int, action_dim: int) -> nn.Module:
         return SACNetworks(obs_dim, action_dim, self)
 
     def _make_explore_policy(self) -> nn.Module:
         return SACPolicyModule(self.nets, eval_mode=False)
+
+    def _make_eval_policy(self) -> nn.Module:
+        return SACPolicyModule(self.nets, eval_mode=True)
+
+    def _compile_update(self, mode: str | None) -> None:
+        """``compile_scope: update``: compile one gradient step (TD3 compiles its parts)."""
+        self._update = torch.compile(self._update, mode=mode)
 
     def _optimizer_specs(self) -> dict[str, tuple[list[nn.Parameter], dict]]:
         """name -> (params, optimiser kwargs). ``wd`` > 0 selects AdamW."""

@@ -19,6 +19,7 @@ Implemented experiments:
 | PPO       | DMC cheetah-run | `experiment=ppo/dmc`         |
 | PPO       | ALE/Jamesbond-v5 (Atari-100k) | `experiment=ppo/ale` |
 | SAC       | dmc cheetah-run (DMC100k) | `experiment=sac/dmc`  |
+| TD3       | dmc cheetah-run (DMC100k) | `experiment=td3/dmc`  |
 | TD-MPC2   | dmc cheetah-run | `experiment=tdmpc2/dmc`      |
 | DreamerV3 | ALE/Jamesbond-v5<br>(Atari100k) | `experiment=dreamer/atari100k` |
 | DreamerV3 | DMC cheetah-run<br>(proprio) | `experiment=dreamer/dmc` |

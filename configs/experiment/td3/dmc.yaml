@@ -1,0 +1,30 @@
+# @package _global_
+# TD3 on DMC100k (state obs, single GPU): 100k environment steps = 50k agent
+# steps at action repeat 2, the shared DMC protocol of sac/dmc, bro/dmc and
+# tdmpc2/dmc (`environment: dmc` + `evaluation: dmc`).
+# Run another task with: environment.task=walker-walk
+defaults:
+  - override /algorithm: td3
+  - override /environment: dmc
+  - override /evaluation: dmc
+  - override /trainer: gpu
+  - override /logger: wandb
+  - _self_
+
+algorithm:
+  # Fujimoto's 25k random steps would be half of this 50k-step budget; use
+  # the same 5k warm-up as sac/dmc (jaxrl) so the two are directly comparable.
+  init_random_frames: 5_000
+
+environment:
+  task: cheetah-run
+
+trainer:
+  seed: 1
+  num_envs: 1
+  total_frames: 50_000   # agent steps; x action_repeat 2 = 100k env steps
+
+checkpoint:
+  enabled: true
+  save_every_n_steps: 0
+  save_last: true

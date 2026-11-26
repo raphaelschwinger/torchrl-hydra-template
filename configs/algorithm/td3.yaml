@@ -1,0 +1,48 @@
+# TD3 (Twin Delayed DDPG). Mirrors the keyword defaults of
+# src.algorithms.td3.TD3Algorithm: Fujimoto's reference TD3.py / main.py
+# (github.com/sfujim/TD3). MLP 256x2 actor and critics with PyTorch's default
+# init, Adam 3e-4, batch 256, tau 0.005, exploration noise 0.1, target policy
+# noise 0.2 clipped at 0.5, policy delay 2, 25k random warm-up steps.
+#
+# TD3 subclasses SAC (src.algorithms.sac): the replay buffer, double critic and
+# runtime knobs are SAC's. The networks are built in setup() from scalar knobs
+# (TD-MPC2 / SAC precedent).
+_target_: src.algorithms.td3.TD3Algorithm
+
+obs_key: observation
+
+# --- Architecture ---
+critic_hidden_dim: 256
+critic_depth: 2
+actor_hidden_dim: 256
+actor_depth: 2
+
+# --- Optimisation ---
+lr: 3e-4            # actor and critic
+weight_decay: 0.0   # > 0 switches the networks to AdamW
+discount: 0.99
+tau: 0.005
+batch_size: 256
+
+# --- TD3 ---
+exploration_noise: 0.1
+target_noise: 0.2
+target_noise_clip: 0.5
+policy_delay: 2
+
+# --- Replay ---
+buffer_size: 1_000_000
+buffer_device: cpu
+
+# --- Data collection / learning schedule ---
+frames_per_batch: 1
+init_random_frames: 25_000
+num_updates: 1   # replay ratio (UTD)
+
+# --- Runtime knobs (all off = the reference code path) ---
+compile: false        # torch.compile: true = default mode, or a mode string
+compile_scope: update # TD3 supports "update" only (the policy delay branches per update)
+amp: false            # autocast(bfloat16) around forward passes (changes numerics)
+tf32: false           # TF32 for float32 matmuls
+fused_optim: false    # fused Adam/AdamW kernels
+pin_memory: false     # pinned staging + async host->device copy of sampled batches

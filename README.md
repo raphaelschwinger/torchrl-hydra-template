@@ -53,6 +53,7 @@ Four derived rules:
 | A2C | Mnih et al. (2016), [*Asynchronous Methods for Deep Reinforcement Learning*](https://arxiv.org/abs/1602.01783) | [`src/algorithms/a2c/README.md`](src/algorithms/a2c/README.md) |
 | PPO | Schulman et al. (2017), [*Proximal Policy Optimization Algorithms*](https://arxiv.org/abs/1707.06347) | [`src/algorithms/ppo/README.md`](src/algorithms/ppo/README.md) |
 | SAC | Haarnoja et al. (2018), [*Soft Actor-Critic Algorithms and Applications*](https://arxiv.org/abs/1812.05905) | [`src/algorithms/sac/README.md`](src/algorithms/sac/README.md) |
+| TD3 | Fujimoto, van Hoof & Meger (2018), [*Addressing Function Approximation Error in Actor-Critic Methods*](https://arxiv.org/abs/1802.09477) | [`src/algorithms/td3/README.md`](src/algorithms/td3/README.md) |
 | TD-MPC2 | Hansen, Su & Wang (2024), [*TD-MPC2: Scalable, Robust World Models for Continuous Control*](https://arxiv.org/abs/2310.16828) | [`src/algorithms/tdmpc2/README.md`](src/algorithms/tdmpc2/README.md) |
 | DreamerV3 | Hafner et al. (2025), [*Mastering Diverse Control Tasks through World Models*](https://www.nature.com/articles/s41586-025-08744-2) | [`src/algorithms/dreamer/README.md`](src/algorithms/dreamer/README.md) |
 | Rainbow / DER | Hessel et al. (2018), [*Rainbow: Combining Improvements in Deep Reinforcement Learning*](https://arxiv.org/abs/1710.02298); van Hasselt et al. (2019), [*When to Use Parametric Models in Reinforcement Learning?*](https://arxiv.org/abs/1906.05243) (DER) | [`src/algorithms/rainbow/README.md`](src/algorithms/rainbow/README.md) |

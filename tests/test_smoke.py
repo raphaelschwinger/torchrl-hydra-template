@@ -216,6 +216,27 @@ def test_smoke_sac_walker_walk():
     _train(cfg)
 
 
+def test_smoke_td3_finger_spin():
+    """TD3 on dm_control (deterministic actor, delayed actor/target updates)."""
+    pytest.importorskip("dm_control")
+    cfg = load_experiment_cfg(
+        "td3/dmc",
+        [
+            *BASE_OVERRIDES,
+            "environment.task=finger-spin",
+            "trainer.total_frames=60",
+            "trainer.log_every_n_steps=20",
+            "algorithm.init_random_frames=20",
+            "algorithm.num_updates=3",
+            "algorithm.batch_size=8",
+            "algorithm.critic_hidden_dim=32",
+            "algorithm.actor_hidden_dim=16",
+        ],
+    )
+    from src.train import _train
+
+    _train(cfg)
+
 def _a2c_overrides() -> list[str]:
     # 600 frames in 120-frame rollouts: 5 collections, 6 mini-batches each
     # (mini_batch_size=20). On-policy: no replay buffer, no warm-up.
