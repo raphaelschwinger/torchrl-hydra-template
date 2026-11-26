@@ -46,4 +46,5 @@ compile: false        # torch.compile: true = default mode, or a mode string (re
 compile_scope: update # "update" = one gradient step; "step" = all num_updates of an agent step in one graph
 amp: false            # autocast(bfloat16) around forward passes (changes numerics)
 tf32: false           # TF32 for float32 matmuls
-fused_optim: false    # fused Adam/AdamW kernels
+fused_optim: false  # fused Adam/AdamW kernels
+pin_memory: false   # pinned staging + async host->device copy of sampled batches

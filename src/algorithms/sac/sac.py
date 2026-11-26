@@ -131,6 +131,7 @@ class SACAlgorithm(BaseAlgorithm):
         amp: bool = False,  # autocast(bfloat16) around forward passes
         tf32: bool = False,  # TF32 for float32 matmuls
         fused_optim: bool = False,  # fused optimiser kernels
+        pin_memory: bool = False,  # pinned staging + async host->device copy of sampled batches
     ) -> None:
         super().__init__(device)
         if compile_scope not in ("update", "step"):
@@ -150,6 +151,7 @@ class SACAlgorithm(BaseAlgorithm):
         self.num_updates = num_updates
         self.compile, self.compile_scope = compile, compile_scope
         self.amp, self.tf32, self.fused_optim = amp, tf32, fused_optim
+        self.pin_memory = pin_memory
         self._collected_frames = 0
         self._last_info: dict[str, torch.Tensor] | None = None
 
@@ -259,7 +261,10 @@ class SACAlgorithm(BaseAlgorithm):
 
     def _sample(self) -> TensorDict:
         """One uniform draw of ``num_updates * batch_size`` transitions, on the device."""
-        return self.replay_buffer.sample().to(self.device, non_blocking=True)
+        sample = self.replay_buffer.sample()
+        if self.pin_memory and self._on_cuda and sample.device.type == "cpu":
+            sample = sample.pin_memory()
+        return sample.to(self.device, non_blocking=True)
 
     def _updates(self, sample: TensorDict) -> dict[str, torch.Tensor]:
         """``num_updates`` gradient steps, one per ``batch_size`` slice of ``sample``."""
