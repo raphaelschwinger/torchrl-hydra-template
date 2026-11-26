@@ -1,124 +1,244 @@
-# Per-tweak runtime ablation for TD-MPC2 on DMC100k, the counterpart of
-# bbf_/dreamer_optimisations_ablation.yaml. BASELINE IS EVERYTHING OFF; each
-# row switches one knob on. Pure-runtime rows on finger-turn_easy; baseline and
-# combined also on quadruped-walk (the DMC100k validation pair). 3 seeds each,
-# so every timing has a spread.
+# Per-tweak runtime ablation for TD-MPC2 on DMC100k finger-turn_easy (the
+# validation task), the counterpart of bbf_/dreamer_optimisations_ablation.yaml.
+# BASELINE IS EVERYTHING OFF; each row switches one knob on and spells out every
+# runtime flag. Rows of BBF/Dreamer that do not apply to TD-MPC2: channels-last
+# and cuDNN benchmark (no convolutions: state observations, MLP world model),
+# uniform replay (TD-MPC2 already samples uniformly, no PER), and Dreamer's
+# static_pad / dedup_value / foreach_laprop (Dreamer-specific). Added for the
+# actor-bound case: fewer MPPI iterations. 5 seeds per row.
 #
 # MEASURED SWEEP: wall-clock, run serially on one idle GPU:
-#   GPU=2 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/tdmpc2_optimisations_ablation.yaml
+#   GPU=0 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/tdmpc2_optimisations_ablation.yaml
+
 common:
-  tag: tdmpc2-opt
-  seeds:
-  - 1
-  - 2
-  - 3
-  total_frames: 50000
+  tag: tdmpc2-opt5
+  seeds: [1, 2, 3, 4, 5]
+  total_frames: 50_000
   overrides:
-  - trainer.num_envs=1
-  - trainer.log_every_n_steps=1000
-  - checkpoint.enabled=false
+    - environment.task=finger-turn_easy
+    - trainer.num_envs=1
+    - trainer.log_every_n_steps=1000
+    - checkpoint.enabled=false
   smoke_overrides:
-  - trainer.total_frames=300
-  - evaluation.every_n_steps=0
-  - evaluation.final_num_episodes=1
-  - trainer.log_every_n_steps=50
-  - algorithm.init_random_frames=100
+    - trainer.total_frames=300
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=1
+    - trainer.log_every_n_steps=50
+    - algorithm.init_random_frames=100
+    - algorithm.pretrain_updates=5
+    - algorithm.num_updates=2
+
 runs:
-  tdmpc2_baseline_finger-turn_easy:
-    label: Baseline (TD-MPC2, compile off)
-    axis: ''
+  baseline:
+    label: "Baseline (TD-MPC2, all runtime tweaks off)"
+    axis: ""
     semantics_preserving: true
     experiment: tdmpc2/dmc
     overrides:
-    - exp_name=tdmpc2_runtime_baseline
-    - environment.task=finger-turn_easy
-    - algorithm.compile=false
-    - algorithm.tf32=false
-    - algorithm.buffer_device=cpu
-    smoke_overrides:
-    - algorithm.pretrain_updates=5
-    - algorithm.num_updates=2
-  tdmpc2_baseline_quadruped-walk:
-    label: Baseline (TD-MPC2, compile off)
-    axis: ''
+      - exp_name=tdmpc2_ablation_baseline
+      - algorithm.compile=false
+      - algorithm.tf32=false
+      - algorithm.amp=false
+      - algorithm.fused_optim=false
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cpu
+
+  pin_memory:
+    label: "Pinned staging + async H2D"
+    axis: "data"
     semantics_preserving: true
     experiment: tdmpc2/dmc
     overrides:
-    - exp_name=tdmpc2_runtime_baseline
-    - environment.task=quadruped-walk
-    - algorithm.compile=false
-    - algorithm.tf32=false
-    - algorithm.buffer_device=cpu
-    smoke_overrides:
-    - algorithm.pretrain_updates=5
-    - algorithm.num_updates=2
-  tdmpc2_compile_finger-turn_easy:
-    label: torch.compile reduce-overhead (upstream GPU default)
-    axis: network
+      - exp_name=tdmpc2_ablation_pin_memory
+      - algorithm.compile=false
+      - algorithm.tf32=false
+      - algorithm.amp=false
+      - algorithm.fused_optim=false
+      - algorithm.pin_memory=true
+      - algorithm.buffer_device=cpu
+
+  gpu_replay:
+    label: "GPU-resident replay"
+    axis: "data"
     semantics_preserving: true
     experiment: tdmpc2/dmc
     overrides:
-    - exp_name=tdmpc2_runtime_compile
-    - environment.task=finger-turn_easy
-    - algorithm.compile=true
-    - algorithm.tf32=false
-    - algorithm.buffer_device=cpu
-    smoke_overrides:
-    - algorithm.pretrain_updates=5
-    - algorithm.num_updates=2
-  tdmpc2_tf32_finger-turn_easy:
-    label: TF32 matmuls
-    axis: network
+      - exp_name=tdmpc2_ablation_gpu_replay
+      - algorithm.compile=false
+      - algorithm.tf32=false
+      - algorithm.amp=false
+      - algorithm.fused_optim=false
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cuda
+
+  utd2:
+    label: "Replay ratio 1 → 2 (100 updates per 50 steps)"
+    axis: "data"
+    semantics_preserving: false
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_ablation_utd2
+      - algorithm.compile=false
+      - algorithm.tf32=false
+      - algorithm.amp=false
+      - algorithm.fused_optim=false
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cpu
+      - algorithm.num_updates=100
+
+  compile:
+    label: "torch.compile (default mode)"
+    axis: "network"
     semantics_preserving: true
     experiment: tdmpc2/dmc
     overrides:
-    - exp_name=tdmpc2_runtime_tf32
-    - environment.task=finger-turn_easy
-    - algorithm.compile=false
-    - algorithm.tf32=true
-    - algorithm.buffer_device=cpu
-    smoke_overrides:
-    - algorithm.pretrain_updates=5
-    - algorithm.num_updates=2
-  tdmpc2_gpu_replay_finger-turn_easy:
-    label: GPU-resident replay
-    axis: data
+      - exp_name=tdmpc2_ablation_compile
+      - algorithm.compile=default
+      - algorithm.tf32=false
+      - algorithm.amp=false
+      - algorithm.fused_optim=false
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cpu
+
+  compile_cg:
+    label: "torch.compile reduce-overhead (CUDA graphs; upstream GPU default)"
+    axis: "network"
     semantics_preserving: true
     experiment: tdmpc2/dmc
     overrides:
-    - exp_name=tdmpc2_runtime_gpu_replay
-    - environment.task=finger-turn_easy
-    - algorithm.compile=false
-    - algorithm.tf32=false
-    - algorithm.buffer_device=cuda
-    smoke_overrides:
-    - algorithm.pretrain_updates=5
-    - algorithm.num_updates=2
-  tdmpc2_combined_finger-turn_easy:
-    label: Combined (compile, TF32, GPU replay)
-    axis: combined
+      - exp_name=tdmpc2_ablation_compile_cg
+      - algorithm.compile=reduce-overhead
+      - algorithm.tf32=false
+      - algorithm.amp=false
+      - algorithm.fused_optim=false
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cpu
+
+  max_autotune:
+    label: "torch.compile max-autotune-no-cudagraphs"
+    axis: "network"
     semantics_preserving: true
     experiment: tdmpc2/dmc
     overrides:
-    - exp_name=tdmpc2_runtime_combined
-    - environment.task=finger-turn_easy
-    - algorithm.compile=true
-    - algorithm.tf32=true
-    - algorithm.buffer_device=cuda
-    smoke_overrides:
-    - algorithm.pretrain_updates=5
-    - algorithm.num_updates=2
-  tdmpc2_combined_quadruped-walk:
-    label: Combined (compile, TF32, GPU replay)
-    axis: combined
+      - exp_name=tdmpc2_ablation_max_autotune
+      - algorithm.compile=max-autotune-no-cudagraphs
+      - algorithm.tf32=false
+      - algorithm.amp=false
+      - algorithm.fused_optim=false
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cpu
+
+  amp:
+    label: "Mixed precision (bf16)"
+    axis: "network"
+    semantics_preserving: false
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_ablation_amp
+      - algorithm.compile=false
+      - algorithm.tf32=false
+      - algorithm.amp=true
+      - algorithm.fused_optim=false
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cpu
+
+  tf32:
+    label: "TF32 matmuls"
+    axis: "network"
     semantics_preserving: true
     experiment: tdmpc2/dmc
     overrides:
-    - exp_name=tdmpc2_runtime_combined
-    - environment.task=quadruped-walk
-    - algorithm.compile=true
-    - algorithm.tf32=true
-    - algorithm.buffer_device=cuda
-    smoke_overrides:
-    - algorithm.pretrain_updates=5
-    - algorithm.num_updates=2
+      - exp_name=tdmpc2_ablation_tf32
+      - algorithm.compile=false
+      - algorithm.tf32=true
+      - algorithm.amp=false
+      - algorithm.fused_optim=false
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cpu
+
+  fused_optim:
+    label: "Fused Adam"
+    axis: "network"
+    semantics_preserving: true
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_ablation_fused_optim
+      - algorithm.compile=false
+      - algorithm.tf32=false
+      - algorithm.amp=false
+      - algorithm.fused_optim=true
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cpu
+
+  batch512:
+    label: "Optimisation batch 256 → 512"
+    axis: "network"
+    semantics_preserving: false
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_ablation_batch512
+      - algorithm.compile=false
+      - algorithm.tf32=false
+      - algorithm.amp=false
+      - algorithm.fused_optim=false
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cpu
+      - algorithm.batch_size=512
+
+  batch128:
+    label: "Optimisation batch 256 → 128"
+    axis: "network"
+    semantics_preserving: false
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_ablation_batch128
+      - algorithm.compile=false
+      - algorithm.tf32=false
+      - algorithm.amp=false
+      - algorithm.fused_optim=false
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cpu
+      - algorithm.batch_size=128
+
+  mppi_iters3:
+    label: "MPPI iterations 6 → 3 (actor side)"
+    axis: "actor"
+    semantics_preserving: false
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_ablation_mppi_iters3
+      - algorithm.compile=false
+      - algorithm.tf32=false
+      - algorithm.amp=false
+      - algorithm.fused_optim=false
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cpu
+      - algorithm.iterations=3
+
+  combined:
+    label: "Combined (CUDA graphs, TF32, fused Adam, GPU replay)"
+    axis: "combined"
+    semantics_preserving: true
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_ablation_combined
+      - algorithm.compile=reduce-overhead
+      - algorithm.tf32=true
+      - algorithm.amp=false
+      - algorithm.fused_optim=true
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cuda
+
+  combined_amp:
+    label: "Combined + bf16"
+    axis: "combined"
+    semantics_preserving: false
+    experiment: tdmpc2/dmc
+    overrides:
+      - exp_name=tdmpc2_ablation_combined_amp
+      - algorithm.compile=reduce-overhead
+      - algorithm.tf32=true
+      - algorithm.amp=true
+      - algorithm.fused_optim=true
+      - algorithm.pin_memory=false
+      - algorithm.buffer_device=cuda
