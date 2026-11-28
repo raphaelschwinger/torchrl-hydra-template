@@ -46,9 +46,11 @@ value. Learning uses a replay buffer and slowly moving target networks.
 | Algorithm | [`ddpg.py`](ddpg.py) |
 | HPs | [`configs/algorithm/ddpg.yaml`](../../../configs/algorithm/ddpg.yaml) |
 | Experiment | [`configs/experiment/ddpg/gym.yaml`](../../../configs/experiment/ddpg/gym.yaml) |
+| Experiment: DMC | [`configs/experiment/ddpg/dmc.yaml`](../../../configs/experiment/ddpg/dmc.yaml) |
 
 ```shell
 python src/train.py experiment=ddpg/gym
+python src/train.py experiment=ddpg/dmc environment.task=walker-walk
 ```
 
 ### Mapping pseudocode → code

@@ -1,0 +1,175 @@
+# DMC Proprio benchmark: TD-MPC2, DreamerV3 and PPO on six dm_control tasks,
+# 3 seeds x 1M agent steps, compared against the TD-MPC2 repo's per-seed
+# results CSVs and cleanRL's ppo_continuous_action dm_control table.
+# cheetah-run is already covered by benchmarks.yaml.
+#
+#   ./scripts/run_sweep.sh --sweep scripts/sweeps/dmc_benchmark.yaml --smoke
+#   ./scripts/run_sweep.sh --sweep scripts/sweeps/dmc_benchmark.yaml --gpus 0,1,2,3,4,5,6,7
+#
+# Jobs are ordered longest first (TD-MPC2, then DreamerV3, then PPO) so the
+# queue does not end on a multi-hour tail. DDPG is CPU-only and lives in
+# dmc_benchmark_ddpg.yaml so it does not hold a GPU worker.
+
+common:
+  tag: dmc-v1
+  seeds: [1, 2, 3]
+  smoke_overrides:
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=1
+    - checkpoint.enabled=false
+
+x-smoke:
+  tdmpc2: &smoke_tdmpc2
+    - trainer.total_frames=120
+    - trainer.log_every_n_steps=40
+    - algorithm.compile=false
+    - algorithm.frames_per_batch=40
+    - algorithm.init_random_frames=40
+    - algorithm.pretrain_updates=1
+    - algorithm.num_updates=1
+    - algorithm.batch_size=4
+    - algorithm.buffer_size=1000
+    - algorithm.latent_dim=64
+    - algorithm.enc_dim=32
+    - algorithm.mlp_dim=32
+    - algorithm.num_q=2
+    - algorithm.num_samples=32
+    - algorithm.num_elites=4
+    - algorithm.num_pi_trajs=2
+    - algorithm.iterations=1
+  dreamer: &smoke_dreamer
+    - trainer.total_frames=40
+    - trainer.log_every_n_steps=10
+    - algorithm.world_model_video_log_every=8
+    - algorithm.agent_video_log_every=0
+    - model.deter=64
+    - model.hidden=64
+    - model.discrete=8
+    - model.units=64
+    - algorithm.buffer_config.batch_size=16
+    - algorithm.buffer_config.batch_length=8
+    - algorithm.buffer_config.max_size=500
+    - algorithm.dreamer_config.compile=false
+    - algorithm.dreamer_config.imag_horizon=3
+  ppo: &smoke_ppo
+    - trainer.total_frames=256
+    - trainer.log_every_n_steps=64
+    - algorithm.frames_per_batch=64
+    - algorithm.mini_batch_size=32
+    - algorithm.num_epochs=2
+    - algorithm.anneal_frames=256
+
+runs:
+  tdmpc2_dmc_walker_walk:
+    experiment: tdmpc2/dmc
+    overrides:
+      - environment.task=walker-walk
+    smoke_overrides: *smoke_tdmpc2
+
+  tdmpc2_dmc_walker_run:
+    experiment: tdmpc2/dmc
+    overrides:
+      - environment.task=walker-run
+    smoke_overrides: *smoke_tdmpc2
+
+  tdmpc2_dmc_quadruped_run:
+    experiment: tdmpc2/dmc
+    overrides:
+      - environment.task=quadruped-run
+    smoke_overrides: *smoke_tdmpc2
+
+  tdmpc2_dmc_finger_turn_hard:
+    experiment: tdmpc2/dmc
+    overrides:
+      - environment.task=finger-turn-hard
+    smoke_overrides: *smoke_tdmpc2
+
+  tdmpc2_dmc_reacher_hard:
+    experiment: tdmpc2/dmc
+    overrides:
+      - environment.task=reacher-hard
+    smoke_overrides: *smoke_tdmpc2
+
+  tdmpc2_dmc_hopper_hop:
+    experiment: tdmpc2/dmc
+    overrides:
+      - environment.task=hopper-hop
+    smoke_overrides: *smoke_tdmpc2
+
+  dreamer_dmc_walker_walk:
+    experiment: dreamer/dmc
+    overrides:
+      - environment.task=walker-walk
+    smoke_overrides: *smoke_dreamer
+
+  dreamer_dmc_walker_run:
+    experiment: dreamer/dmc
+    overrides:
+      - environment.task=walker-run
+    smoke_overrides: *smoke_dreamer
+
+  dreamer_dmc_quadruped_run:
+    experiment: dreamer/dmc
+    overrides:
+      - environment.task=quadruped-run
+    smoke_overrides: *smoke_dreamer
+
+  dreamer_dmc_finger_turn_hard:
+    experiment: dreamer/dmc
+    overrides:
+      - environment.task=finger-turn-hard
+    smoke_overrides: *smoke_dreamer
+
+  dreamer_dmc_reacher_hard:
+    experiment: dreamer/dmc
+    overrides:
+      - environment.task=reacher-hard
+    smoke_overrides: *smoke_dreamer
+
+  dreamer_dmc_hopper_hop:
+    experiment: dreamer/dmc
+    overrides:
+      - environment.task=hopper-hop
+    smoke_overrides: *smoke_dreamer
+
+  ppo_dmc_walker_walk:
+    experiment: ppo/dmc
+    overrides:
+      - environment.task=walker-walk
+      - trainer.accelerator=gpu
+    smoke_overrides: *smoke_ppo
+
+  ppo_dmc_walker_run:
+    experiment: ppo/dmc
+    overrides:
+      - environment.task=walker-run
+      - trainer.accelerator=gpu
+    smoke_overrides: *smoke_ppo
+
+  ppo_dmc_quadruped_run:
+    experiment: ppo/dmc
+    overrides:
+      - environment.task=quadruped-run
+      - trainer.accelerator=gpu
+    smoke_overrides: *smoke_ppo
+
+  ppo_dmc_finger_turn_hard:
+    experiment: ppo/dmc
+    overrides:
+      - environment.task=finger-turn-hard
+      - trainer.accelerator=gpu
+    smoke_overrides: *smoke_ppo
+
+  ppo_dmc_reacher_hard:
+    experiment: ppo/dmc
+    overrides:
+      - environment.task=reacher-hard
+      - trainer.accelerator=gpu
+    smoke_overrides: *smoke_ppo
+
+  ppo_dmc_hopper_hop:
+    experiment: ppo/dmc
+    overrides:
+      - environment.task=hopper-hop
+      - trainer.accelerator=gpu
+    smoke_overrides: *smoke_ppo

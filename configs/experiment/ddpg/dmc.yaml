@@ -1,0 +1,22 @@
+# @package _global_
+# DDPG on dm_control (state obs), first DMC numbers for this port.
+# Same env stack and evaluation protocol as tdmpc2/dmc and dreamer/dmc
+# (action repeat 2, eval every 10k agent steps on 10 episodes, deterministic
+# policy, eval canonical), so curves share one axis with those two.
+# There is no published DDPG result under this protocol; compare against the
+# SAC curves in the TD-MPC2 repo's results/sac/ as a reference point.
+# Run another task with: environment.task=walker-walk
+defaults:
+  - override /algorithm: ddpg
+  - override /environment: dmc
+  - override /evaluation: dmc
+  - override /logger: wandb
+  - _self_
+
+environment:
+  task: cheetah-run
+
+trainer:
+  seed: 1
+
+# trainer/default.yaml already provides cpu / 1M agent steps / 1 env.

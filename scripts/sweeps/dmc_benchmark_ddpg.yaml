@@ -1,0 +1,51 @@
+# DDPG on the same six DMC tasks as dmc_benchmark.yaml, CPU only.
+# Run it beside the GPU sweep, with its own sweep dir so the two runners'
+# queues stay apart:
+#
+#   SWEEP_DIR=logs/sweeps-cpu ./scripts/run_sweep.sh \
+#     --sweep scripts/sweeps/dmc_benchmark_ddpg.yaml --gpus 0,1,2,3,4,5
+#
+# (`--gpus` only sets the worker count here: accelerator stays cpu.)
+
+common:
+  tag: dmc-v1
+  seeds: [1, 2, 3]
+  smoke_overrides:
+    - evaluation.every_n_steps=0
+    - evaluation.final_num_episodes=1
+    - checkpoint.enabled=false
+    - trainer.total_frames=200
+    - trainer.log_every_n_steps=50
+    - algorithm.frames_per_batch=50
+    - algorithm.init_random_frames=50
+    - algorithm.num_updates=2
+    - algorithm.batch_size=8
+
+runs:
+  ddpg_dmc_cheetah_run:
+    experiment: ddpg/dmc
+    overrides: [environment.task=cheetah-run]
+
+  ddpg_dmc_walker_walk:
+    experiment: ddpg/dmc
+    overrides: [environment.task=walker-walk]
+
+  ddpg_dmc_walker_run:
+    experiment: ddpg/dmc
+    overrides: [environment.task=walker-run]
+
+  ddpg_dmc_quadruped_run:
+    experiment: ddpg/dmc
+    overrides: [environment.task=quadruped-run]
+
+  ddpg_dmc_finger_turn_hard:
+    experiment: ddpg/dmc
+    overrides: [environment.task=finger-turn-hard]
+
+  ddpg_dmc_reacher_hard:
+    experiment: ddpg/dmc
+    overrides: [environment.task=reacher-hard]
+
+  ddpg_dmc_hopper_hop:
+    experiment: ddpg/dmc
+    overrides: [environment.task=hopper-hop]

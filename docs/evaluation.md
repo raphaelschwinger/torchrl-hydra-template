@@ -125,6 +125,11 @@ There are two runners, that read the sweep config files:
 | `scripts/run_sweep.sh` | Queue-balanced across GPUs. For getting runs finished. |
 | `scripts/run_measured_sweep.sh` | Serial, one pinned idle GPU, thread-capped. For wall-clock, which parallelism destroys. |
 
+`scripts/sweeps/dmc_benchmark.yaml` extends the DMC side to six more tasks
+(walker-walk, walker-run, quadruped-run, finger-turn-hard, reacher-hard,
+hopper-hop) for TD-MPC2, DreamerV3 and PPO under the W&B tag `dmc-v1`;
+`dmc_benchmark_ddpg.yaml` runs DDPG on the same tasks plus cheetah-run on CPU.
+
 `scripts/sweeps/benchmarks.yaml` is the committed cross-algorithm sweep — PPO,
 BBF and DreamerV3 on Atari-100k Jamesbond, plus PPO, TD-MPC2 and DreamerV3 on
 DMC cheetah-run — at three seeds each.

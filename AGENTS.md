@@ -15,6 +15,7 @@ Implemented experiments:
 | DQN       | CartPole-v1    | `experiment=dqn/gym`          |
 | DQN       | ALE/Pong-v5    | `experiment=dqn/ale`          |
 | DDPG      | HalfCheetah-v4 | `experiment=ddpg/gym`         |
+| DDPG      | DMC cheetah-run | `experiment=ddpg/dmc`        |
 | A2C       | HalfCheetah-v4 | `experiment=a2c/gym`          |
 | PPO       | DMC cheetah-run | `experiment=ppo/dmc`         |
 | PPO       | ALE/Jamesbond-v5 (Atari-100k) | `experiment=ppo/ale` |
@@ -602,6 +603,7 @@ configs/
   evaluation/dmc.yaml       — periodic every 10k agent steps (TD-MPC2 upstream)
   experiment/dqn/{gym,ale}.yaml — DQN on CartPole / Atari Pong (40M frames)
   experiment/ddpg/gym.yaml      — DDPG HalfCheetah (1M frames)
+  experiment/ddpg/dmc.yaml      — DDPG DMC cheetah-run (1M agent steps, CPU, evaluation: dmc)
   experiment/a2c/gym.yaml       — A2C HalfCheetah (1M frames)
   experiment/ppo/{dmc,ale}.yaml — PPO DMC cheetah-run (1M) / Atari-100k JamesBond (100k)
   experiment/tdmpc2/dmc.yaml    — TD-MPC2 DMC cheetah-run
