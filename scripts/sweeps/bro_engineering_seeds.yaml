@@ -1,0 +1,117 @@
+# BRO engineering ablation, follow-up (2026-11-28): settles whether Combined's
+# return differs from the baseline. Seeds 6-15 of baseline and Combined (seeds 1-5
+# are in bro_optimisations_ablation.yaml, same exp_names, so the rows join), and
+# Combined without TF32 at 15 seeds, to isolate the one precision change in it.
+# Run serially on one idle GPU per job (wall-clock is recorded):
+#   GPU=0 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/bro_engineering_seeds.yaml --only baseline
+common:
+  tag: bro-eng
+  seeds:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  total_frames: 50000
+  overrides:
+  - environment.task=finger-turn_easy
+  - trainer.num_envs=1
+  - trainer.log_every_n_steps=1000
+  - checkpoint.enabled=false
+  smoke_overrides:
+  - trainer.total_frames=300
+  - evaluation.every_n_steps=0
+  - evaluation.final_num_episodes=1
+  - trainer.log_every_n_steps=50
+  - algorithm.init_random_frames=100
+runs:
+  baseline:
+    label: Baseline (published BRO, RR 10, all runtime tweaks off)
+    axis: ''
+    semantics_preserving: true
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_ablation_baseline
+    - algorithm.compile=false
+    - algorithm.compile_scope=update
+    - algorithm.tf32=false
+    - algorithm.amp=false
+    - algorithm.fused_optim=false
+    - algorithm.pin_memory=false
+    - algorithm.buffer_device=cpu
+    seeds:
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+  combined:
+    label: Combined (CUDA graph per step, TF32, fused AdamW, GPU replay)
+    axis: combined
+    semantics_preserving: true
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_ablation_combined
+    - algorithm.compile=reduce-overhead
+    - algorithm.compile_scope=step
+    - algorithm.tf32=true
+    - algorithm.amp=false
+    - algorithm.fused_optim=true
+    - algorithm.pin_memory=false
+    - algorithm.buffer_device=cuda
+    seeds:
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+  combined_no_tf32:
+    label: Combined (CUDA graph per step, fused AdamW, GPU replay)
+    axis: combined
+    semantics_preserving: true
+    experiment: bro/dmc
+    overrides:
+    - exp_name=bro_ablation_combined_no_tf32
+    - algorithm.compile=reduce-overhead
+    - algorithm.compile_scope=step
+    - algorithm.amp=false
+    - algorithm.fused_optim=true
+    - algorithm.pin_memory=false
+    - algorithm.buffer_device=cuda
+    - algorithm.tf32=false
+    seeds:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15

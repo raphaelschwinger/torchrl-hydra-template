@@ -1,0 +1,147 @@
+# BBF engineering-only ablation, follow-up (2026-11-28). Algorithmic rows (replay
+# ratio, batch size, uniform replay) are out of scope. Tops the single-seed rows of
+# bbf_optimisations_ablation.yaml up to 5 seeds (same exp_names; BBF code unchanged
+# since those runs apart from defaults, which common.overrides pins off), and adds
+# Combined in fp32 and Combined + bf16 (combined_full, the current BBF defaults).
+#   GPU=0 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/bbf_engineering_ablation.yaml
+common:
+  tag: bbf-eng
+  seeds:
+  - 1
+  total_frames: 100000
+  overrides:
+  - environment.task=Jamesbond
+  - checkpoint.enabled=false
+  - trainer.log_every_n_steps=1000
+  - trainer.num_envs=1
+  - algorithm.compile=false
+  - algorithm.amp=false
+  - algorithm.channels_last=false
+  - algorithm.pin_memory=false
+  - algorithm.storage_device=cpu
+  - algorithm.cudnn_benchmark=false
+  - algorithm.tf32=false
+runs:
+  pin_memory:
+    label: Pinned staging + async H2D
+    axis: data
+    semantics_preserving: true
+    experiment: bbf/atari100k
+    overrides:
+    - exp_name=bbf_ablation_pin_memory
+    - algorithm.pin_memory=true
+    seeds:
+    - 2
+    - 3
+    - 4
+    - 5
+  gpu_replay:
+    label: GPU-resident replay
+    axis: data
+    semantics_preserving: true
+    experiment: bbf/atari100k
+    overrides:
+    - exp_name=bbf_ablation_gpu_replay
+    - algorithm.storage_device=cuda
+    seeds:
+    - 2
+    - 3
+    - 4
+    - 5
+  channels_last:
+    label: Channels-last
+    axis: network
+    semantics_preserving: true
+    experiment: bbf/atari100k
+    overrides:
+    - exp_name=bbf_ablation_channels_last
+    - algorithm.channels_last=true
+    seeds:
+    - 2
+    - 3
+    - 4
+    - 5
+  cudnn_benchmark:
+    label: cuDNN benchmark
+    axis: network
+    semantics_preserving: true
+    experiment: bbf/atari100k
+    overrides:
+    - exp_name=bbf_ablation_cudnn_benchmark
+    - algorithm.cudnn_benchmark=true
+    seeds:
+    - 2
+    - 3
+    - 4
+    - 5
+  tf32:
+    label: TF32 matmuls
+    axis: network
+    semantics_preserving: true
+    experiment: bbf/atari100k
+    overrides:
+    - exp_name=bbf_ablation_tf32
+    - algorithm.tf32=true
+    seeds:
+    - 2
+    - 3
+    - 4
+    - 5
+  compile:
+    label: torch.compile
+    axis: network
+    semantics_preserving: true
+    experiment: bbf/atari100k
+    overrides:
+    - exp_name=bbf_ablation_compile
+    - algorithm.compile=true
+    seeds:
+    - 2
+    - 3
+    - 4
+    - 5
+  max_autotune:
+    label: torch.compile (max-autotune-no-cudagraphs)
+    axis: network
+    semantics_preserving: true
+    experiment: bbf/atari100k
+    overrides:
+    - exp_name=bbf_ablation_max_autotune_no_graphs
+    - algorithm.compile=max-autotune-no-cudagraphs
+    seeds:
+    - 2
+    - 3
+    - 4
+    - 5
+  combined_fp32:
+    label: Combined (GPU replay, cuDNN benchmark, TF32)
+    experiment: bbf/atari100k
+    overrides:
+    - exp_name=bbf_ablation_combined_fp32
+    - algorithm.storage_device=cuda
+    - algorithm.cudnn_benchmark=true
+    - algorithm.tf32=true
+    seeds:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+  combined_full:
+    label: Combined + bf16 (= BBF defaults)
+    axis: combined
+    semantics_preserving: false
+    seeds:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    enabled: true
+    experiment: bbf/atari100k
+    overrides:
+    - exp_name=bbf_ablation_combined_full
+    - algorithm.amp=true
+    - algorithm.storage_device=cuda
+    - algorithm.cudnn_benchmark=true
+    - algorithm.tf32=true

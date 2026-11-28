@@ -1,0 +1,260 @@
+# DreamerV3 engineering-only ablation, full re-run (2026-11-28): the September runs
+# predate the replay-buffer reward-alignment fix (8351b70, 2026-10-28), so they are
+# not comparable with new seeds. New exp_names (dreamer_eng_*). Algorithmic rows
+# (train ratio, replay batch) are out of scope. 5 seeds per row.
+#   GPU=0 ./scripts/run_measured_sweep.sh --sweep scripts/sweeps/dreamer_engineering_ablation.yaml
+common:
+  tag: dreamer-eng
+  seeds:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  total_frames: 100000
+  overrides:
+  - environment.task=Jamesbond
+  - checkpoint.enabled=false
+  - trainer.log_every_n_steps=1000
+  - trainer.num_envs=1
+  - algorithm.world_model_video_log_every=0
+  - algorithm.agent_video_log_every=0
+  - algorithm.buffer_config.storage_device=cpu
+runs:
+  baseline:
+    label: Baseline (all runtime tweaks off)
+    axis: ''
+    semantics_preserving: true
+    seeds:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    experiment: dreamer/atari100k
+    overrides:
+    - exp_name=dreamer_eng_baseline
+    - algorithm.dreamer_config.compile=false
+    - algorithm.dreamer_config.perf.amp=off
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=false
+    - algorithm.dreamer_config.perf.tf32=false
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=false
+    - algorithm.buffer_config.pin_memory=false
+  pin_memory:
+    label: Pinned staging + async H2D
+    axis: data
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+    - exp_name=dreamer_eng_pin_memory
+    - algorithm.dreamer_config.compile=false
+    - algorithm.dreamer_config.perf.amp=off
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=false
+    - algorithm.dreamer_config.perf.tf32=false
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=false
+    - algorithm.buffer_config.pin_memory=true
+  gpu_replay:
+    label: GPU-resident replay
+    axis: data
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+    - exp_name=dreamer_eng_gpu_replay
+    - algorithm.dreamer_config.compile=false
+    - algorithm.dreamer_config.perf.amp=off
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=false
+    - algorithm.dreamer_config.perf.tf32=false
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=false
+    - algorithm.buffer_config.pin_memory=false
+    - algorithm.buffer_config.storage_device=cuda
+  channels_last:
+    label: Channels-last
+    axis: network
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+    - exp_name=dreamer_eng_channels_last
+    - algorithm.dreamer_config.compile=false
+    - algorithm.dreamer_config.perf.amp=off
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=false
+    - algorithm.dreamer_config.perf.tf32=false
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=true
+    - algorithm.buffer_config.pin_memory=false
+  cudnn_benchmark:
+    label: cuDNN benchmark
+    axis: network
+    semantics_preserving: true
+    enabled: true
+    experiment: dreamer/atari100k
+    overrides:
+    - exp_name=dreamer_eng_cudnn_benchmark
+    - algorithm.dreamer_config.compile=false
+    - algorithm.dreamer_config.perf.amp=off
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=true
+    - algorithm.dreamer_config.perf.tf32=false
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=false
+    - algorithm.buffer_config.pin_memory=false
+  tf32:
+    label: TF32 matmuls
+    axis: network
+    semantics_preserving: true
+    enabled: true
+    experiment: dreamer/atari100k
+    overrides:
+    - exp_name=dreamer_eng_tf32
+    - algorithm.dreamer_config.compile=false
+    - algorithm.dreamer_config.perf.amp=off
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=false
+    - algorithm.dreamer_config.perf.tf32=true
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=false
+    - algorithm.buffer_config.pin_memory=false
+  compile:
+    label: torch.compile
+    axis: network
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+    - exp_name=dreamer_eng_compile
+    - algorithm.dreamer_config.compile=true
+    - algorithm.dreamer_config.perf.amp=off
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=false
+    - algorithm.dreamer_config.perf.tf32=false
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=false
+    - algorithm.buffer_config.pin_memory=false
+  reduce-overhead:
+    label: torch.compile (reduce-overhead)
+    axis: network
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+    - exp_name=dreamer_eng_reduce_overhead
+    - algorithm.dreamer_config.compile=reduce-overhead
+    - algorithm.dreamer_config.perf.amp=off
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=false
+    - algorithm.dreamer_config.perf.tf32=false
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=false
+    - algorithm.buffer_config.pin_memory=false
+  max_autotune:
+    label: torch.compile (max-autotune-no-cudagraphs)
+    axis: network
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+    - exp_name=dreamer_eng_max_autotune_no_graphs
+    - algorithm.dreamer_config.compile=max-autotune-no-cudagraphs
+    - algorithm.dreamer_config.perf.amp=off
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=false
+    - algorithm.dreamer_config.perf.tf32=false
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=false
+    - algorithm.buffer_config.pin_memory=false
+  max_autotune_full:
+    label: torch.compile (max-autotune)
+    axis: network
+    semantics_preserving: true
+    experiment: dreamer/atari100k
+    overrides:
+    - exp_name=dreamer_eng_max_autotune
+    - algorithm.dreamer_config.compile=max-autotune
+    - algorithm.dreamer_config.perf.amp=off
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=false
+    - algorithm.dreamer_config.perf.tf32=false
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=false
+    - algorithm.buffer_config.pin_memory=false
+  amp_bf16:
+    label: Mixed precision (bf16)
+    axis: network
+    seeds:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    semantics_preserving: false
+    experiment: dreamer/atari100k
+    overrides:
+    - exp_name=dreamer_eng_amp_bf16
+    - algorithm.dreamer_config.compile=false
+    - algorithm.dreamer_config.perf.amp=bf16
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=false
+    - algorithm.dreamer_config.perf.tf32=false
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=false
+    - algorithm.buffer_config.pin_memory=false
+  combined_fp32:
+    label: Combined (fp32)
+    axis: ''
+    semantics_preserving: true
+    enabled: true
+    seeds:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    experiment: dreamer/atari100k
+    overrides:
+    - exp_name=dreamer_eng_combined_fp32
+    - algorithm.dreamer_config.compile=max-autotune
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=true
+    - algorithm.dreamer_config.perf.tf32=true
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=true
+    - algorithm.buffer_config.pin_memory=true
+    - algorithm.dreamer_config.perf.amp=off
+  combined_bf16:
+    label: Combined + bf16 (= DreamerV3 defaults)
+    axis: ''
+    semantics_preserving: true
+    enabled: true
+    seeds:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    experiment: dreamer/atari100k
+    overrides:
+    - exp_name=dreamer_eng_combined_bf16
+    - algorithm.dreamer_config.compile=max-autotune
+    - algorithm.dreamer_config.perf.amp=bf16
+    - algorithm.dreamer_config.perf.static_pad=false
+    - algorithm.dreamer_config.perf.dedup_value=false
+    - algorithm.dreamer_config.perf.cudnn_benchmark=true
+    - algorithm.dreamer_config.perf.tf32=true
+    - algorithm.dreamer_config.perf.foreach_laprop=false
+    - algorithm.dreamer_config.perf.channels_last=true
+    - algorithm.buffer_config.pin_memory=true
